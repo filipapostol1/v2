@@ -4,7 +4,7 @@ import requests
 import streamlit as st
 from fpdf import FPDF
 
-# 1. CONFIGURAZIONE PAGINA (ASPETTO CORPORATE E SOATTO)
+# 1. CONFIGURAZIONE PAGINA
 st.set_page_config(
     page_title="LogiCalc B2B - Calcolo Tratte & Preventivi",
     layout="wide",
@@ -33,7 +33,7 @@ st.markdown(
 )
 
 
-# 2. FUNZIONI API (GEOLOCALIZZAZIONE E CALCOLO PERCORSO)
+# 2. FUNZIONI API (GEOLOCALIZZAZIONE E CALCOLO DISTANZA)
 def ottieni_coordinate(indirizzo):
     """Richiede le coordinate geografiche tramite OpenStreetMap Nominatim."""
     url = f"https://nominatim.openstreetmap.org/search?q={indirizzo}&format=json&limit=1"
@@ -48,23 +48,17 @@ def ottieni_coordinate(indirizzo):
 
 
 def calcola_rotta(lat1, lon1, lat2, lon2):
-    """Calcola la distanza stradale ed il tempo di percorrenza tramite OSRM."""
+    """Calcola esclusivamente la distanza stradale (Km) tramite OSRM."""
     url = f"http://router.project-osrm.org/route/v1/driving/{lon1},{lat1};{lon2},{lat2}?overview=false"
     try:
         response = requests.get(url).json()
         if response and "routes" in response and len(response["routes"]) > 0:
             distanza_m = response["routes"][0]["distance"]
-            durata_s = response["routes"][0]["duration"]
-
             km = round(distanza_m / 1000, 1)
-            ore = int(durata_s // 3600)
-            minuti = int((durata_s % 3600) // 60)
-            tempo_str = f"{ore}h {minuti}m" if ore > 0 else f"{minuti}m"
-
-            return km, tempo_str
+            return km
     except Exception:
-        return None, None
-    return None, None
+        return None
+    return None
 
 
 # 3. INTERFACCIA UTENTE (STREAMLIT)
@@ -115,24 +109,23 @@ with col_right:
         if not partenza or not destinazione:
             st.error("Errore: inserire sia il punto di partenza sia la destinazione.")
         else:
-            with st.spinner("Elaborazione rotta e generazione documento in corso..."):
+            with st.spinner("Calcolo distanza e generazione documento in corso..."):
                 lat1, lon1 = ottieni_coordinate(partenza)
                 lat2, lon2 = ottieni_coordinate(destinazione)
 
                 if lat1 and lat2:
-                    km, tempo = calcola_rotta(lat1, lon1, lat2, lon2)
+                    km = calcola_rotta(lat1, lon1, lat2, lon2)
 
                     if km:
                         costo_tratta = km * tariffa_km
                         totale_viaggio = costo_tratta + spese_extra
 
-                        # Visualizzazione MetMetriche
-                        m1, m2, m3 = st.columns(3)
+                        # Visualizzazione Metrime (Solo Distanza e Importo)
+                        m1, m2 = st.columns(2)
                         m1.metric("Distanza Totale", f"{km} Km")
-                        m2.metric("Tempo Stimato", tempo)
-                        m3.metric("Importo Totale", f"EUR {totale_viaggio:.2f}")
+                        m2.metric("Importo Totale", f"EUR {totale_viaggio:.2f}")
 
-                        st.success("Calcolo del percorso eseguito con successo.")
+                        st.success("Calcolo della distanza eseguito con successo.")
 
                         # ==========================================
                         # GENERAZIONE DOCUMENTO PDF FORMALE
@@ -201,13 +194,10 @@ with col_right:
                             ln=True,
                         )
                         pdf.cell(
-                            95, 8, f"  Distanza percorsa: {km} Km", border="LB"
-                        )
-                        pdf.cell(
-                            95,
+                            190,
                             8,
-                            f"  Tempo di percorrenza stimato: {tempo}",
-                            border="RB",
+                            f"  Distanza percorsa calcolata: {km} Km",
+                            border="LBR",
                             ln=True,
                         )
 
@@ -256,7 +246,7 @@ with col_right:
                             ln=True,
                         )
 
-                        # CONDORIONI E NOTE LEGALI
+                        # CONDIZIONI E NOTE LEGALI
                         pdf.ln(12)
                         pdf.set_font("Arial", "B", 8)
                         pdf.set_text_color(71, 85, 105)
@@ -272,13 +262,7 @@ with col_right:
                         pdf.cell(
                             0,
                             4,
-                            "2. Le stime temporali sono soggette a variazioni in base alle condizioni del traffico ed eventi atmosferici.",
-                            ln=True,
-                        )
-                        pdf.cell(
-                            0,
-                            4,
-                            "3. Documento elaborato tramite sistema aziendale automatizzato LogiCalc B2B.",
+                            "2. Documento elaborato tramite sistema aziendale automatizzato LogiCalc B2B.",
                             ln=True,
                         )
 
