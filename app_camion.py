@@ -99,13 +99,6 @@ with col_left:
             format="%.2f",
         )
 
-    st.subheader("Personalizzazione Documento")
-    uploaded_logo = st.file_uploader(
-        "Carica Logo Aziendale (PNG o JPG)",
-        type=["png", "jpg", "jpeg"],
-        help="Opzionale. Se non caricato, il sistema cercherà 'logo.png' nella cartella principale.",
-    )
-
     st.markdown("###")
     calcola_btn = st.button("CALCOLA PREVENTIVO E DISTANZA", type="primary")
 
@@ -142,21 +135,11 @@ with col_right:
                         pdf.set_margins(10, 10, 10)
                         pdf.add_page()
 
-                        # GESTIONE DEL LOGO (Caricato da UI o salvato in locale)
-                        logo_path = None
-                        if uploaded_logo is not None:
-                            # Salva temporaneamente il file caricato dall'utente
-                            with open("temp_uploaded_logo.png", "wb") as f:
-                                f.write(uploaded_logo.getbuffer())
-                            logo_path = "temp_uploaded_logo.png"
+                        # RICERCA E INSERIMENTO AUTOMATICO LOGO AZIENDALE
+                        if os.path.exists("logo.jpg"):
+                            pdf.image("logo.jpg", x=10, y=10, w=35)
                         elif os.path.exists("logo.png"):
-                            logo_path = "logo.png"
-                        elif os.path.exists("logo.jpg"):
-                            logo_path = "logo.jpg"
-
-                        if logo_path:
-                            # Inserimento logo in alto a sinistra
-                            pdf.image(logo_path, x=10, y=10, w=35)
+                            pdf.image("logo.png", x=10, y=10, w=35)
 
                         # Intestazione Dati Azienda in alto a destra
                         pdf.set_font("Helvetica", "B", 12)
