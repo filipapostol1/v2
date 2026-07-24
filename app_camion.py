@@ -11,6 +11,9 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# TARIFFA AZIENDALE FISSA (Modificabile solo da te qui nel codice)
+TARIFFA_KM_FISSA = 1.65
+
 # Custom CSS per un'interfaccia sobria e professionale
 st.markdown(
     """
@@ -83,13 +86,15 @@ with col_left:
     )
 
     st.subheader("Parametri Economici")
+
     col_e1, col_e2 = st.columns(2)
     with col_e1:
-        tariffa_km = st.number_input(
-            "Tariffa per Chilometro (EUR)",
-            value=1.65,
-            step=0.05,
-            format="%.2f",
+        # Campo disabilitato (tariffa fissa bloccata)
+        st.text_input(
+            "Tariffa / Km (EUR)",
+            value=f"{TARIFFA_KM_FISSA:.2f} (Fissa)",
+            disabled=True,
+            help="Tariffa chilometrica fissa aziendale.",
         )
     with col_e2:
         spese_extra = st.number_input(
@@ -117,10 +122,10 @@ with col_right:
                     km = calcola_rotta(lat1, lon1, lat2, lon2)
 
                     if km:
-                        costo_tratta = km * tariffa_km
+                        costo_tratta = km * TARIFFA_KM_FISSA
                         totale_viaggio = costo_tratta + spese_extra
 
-                        # Visualizzazione Metrime (Solo Distanza e Importo)
+                        # Visualizzazione Metriche (Solo Distanza e Importo)
                         m1, m2 = st.columns(2)
                         m1.metric("Distanza Totale", f"{km} Km")
                         m2.metric("Importo Totale", f"EUR {totale_viaggio:.2f}")
@@ -221,7 +226,7 @@ with col_right:
                         # Voce 1: Chilometraggio
                         pdf.cell(90, 8, "  Servizio di trasporto stradale", border=1)
                         pdf.cell(30, 8, f"{km} Km", border=1, align="C")
-                        pdf.cell(35, 8, f"EUR {tariffa_km:.2f}", border=1, align="C")
+                        pdf.cell(35, 8, f"EUR {TARIFFA_KM_FISSA:.2f}", border=1, align="C")
                         pdf.cell(35, 8, f"EUR {costo_tratta:.2f}", border=1, align="R", ln=True)
 
                         # Voce 2: Pedaggi / Oneri Accessori
