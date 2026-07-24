@@ -155,38 +155,51 @@ with col_right:
                         pdf.cell(190, 6, " PREVENTIVO DI TRASPORTO / ORDINE", border=1, ln=True, fill=True)
 
                         # Box Intestatario e Luogo di Destinazione
-                        y_before_boxes = pdf.get_y()
-                        pdf.rect(10, y_before_boxes, 95, 22)
-                        pdf.rect(105, y_before_boxes, 95, 22)
+                        y_boxes = pdf.get_y()
+                        box_h = 24  # Altezza fissa dei due riquadri
 
-                        # Colonna Sinistra: Intestatario
-                        pdf.set_xy(12, y_before_boxes + 2)
+                        pdf.rect(10, y_boxes, 95, box_h)
+                        pdf.rect(105, y_boxes, 95, box_h)
+
+                        # --- COLONNA SINISTRA: INTESTATARIO / ORIGINE ---
+                        pdf.set_xy(12, y_boxes + 2)
                         pdf.set_font("Helvetica", "", 7)
                         pdf.set_text_color(100, 100, 100)
-                        pdf.cell(90, 3, "INTESTATARIO / ORIGINE", ln=True)
+                        pdf.cell(91, 3, "INTESTATARIO / ORIGINE", ln=False)
+
+                        pdf.set_xy(12, y_boxes + 6)
                         pdf.set_font("Helvetica", "B", 8)
                         pdf.set_text_color(0, 0, 0)
-                        pdf.cell(90, 4, "CLIENTE DIRETTOCLIENT B2B", ln=True)
+                        pdf.cell(91, 4, "CLIENTE B2B / MITTENTE", ln=False)
+
+                        pdf.set_xy(12, y_boxes + 11)
                         pdf.set_font("Helvetica", "", 8)
-                        pdf.multi_cell(90, 4, f"Partenza: {partenza.title()}")
+                        pdf.multi_cell(91, 4, f"Partenza: {partenza.title()}")
 
-                        # Colonna Destra: Destinazione
-                        pdf.set_xy(107, y_before_boxes + 2)
+                        # --- COLONNA DESTRA: LUOGO DI DESTINAZIONE ---
+                        pdf.set_xy(107, y_boxes + 2)
                         pdf.set_font("Helvetica", "", 7)
                         pdf.set_text_color(100, 100, 100)
-                        pdf.cell(90, 3, "LUOGO DI DESTINAZIONE", ln=True)
+                        pdf.cell(91, 3, "LUOGO DI DESTINAZIONE", ln=False)
+
+                        pdf.set_xy(107, y_boxes + 6)
                         pdf.set_font("Helvetica", "B", 8)
                         pdf.set_text_color(0, 0, 0)
-                        pdf.multi_cell(90, 4, f"Destinazione: {destinazione.title()}")
+                        pdf.cell(91, 4, "DESTINATARIO MERCI", ln=False)
 
-                        pdf.set_xy(10, y_before_boxes + 22)
+                        pdf.set_xy(107, y_boxes + 11)
+                        pdf.set_font("Helvetica", "", 8)
+                        pdf.multi_cell(91, 4, f"Destinazione: {destinazione.title()}")
+
+                        # Riposizionamento del cursore sotto i due box
+                        pdf.set_xy(10, y_boxes + box_h)
 
                         # Griglia Dati Documento
                         pdf.set_font("Helvetica", "", 6)
                         pdf.set_text_color(80, 80, 80)
-                        
+
                         cols_w = [35, 30, 30, 45, 50]
-                        
+
                         pdf.cell(cols_w[0], 3, "NUMERO PREVENTIVO", border="LRT", align="C")
                         pdf.cell(cols_w[1], 3, "DATA DOC.", border="LRT", align="C")
                         pdf.cell(cols_w[2], 3, "COD. CLIENTE", border="LRT", align="C")
@@ -269,7 +282,7 @@ with col_right:
                         pdf.cell(40, 5, f"Euro {spese_extra:.2f}", border="LRB", align="C")
                         pdf.cell(35, 5, f"Euro {totale_imponibile:.2f}", border="LRB", align="C")
                         pdf.cell(35, 5, f"Euro {iva_22:.2f}", border="LRB", align="C")
-                        
+
                         pdf.set_font("Helvetica", "BI", 10)
                         pdf.cell(40, 5, f"Euro {totale_generale:.2f}", border="LRB", align="C", ln=True)
 
