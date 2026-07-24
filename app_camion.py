@@ -36,7 +36,7 @@ st.markdown(
 )
 
 
-# 2. FUNZIONI API
+# 2. FUNZIONI API GEOLOCALIZZAZIONE E PERCORSO
 def ottieni_coordinate(indirizzo):
     url = f"https://nominatim.openstreetmap.org/search?q={indirizzo}&format=json&limit=1"
     headers = {"User-Agent": "LogiCalcB2B/1.0"}
@@ -99,6 +99,13 @@ with col_left:
             format="%.2f",
         )
 
+    st.subheader("Personalizzazione Documento")
+    uploaded_logo = st.file_uploader(
+        "Carica Logo Aziendale (PNG o JPG)",
+        type=["png", "jpg", "jpeg"],
+        help="Opzionale. Se non caricato, il sistema cercherà 'logo.png' nella cartella principale.",
+    )
+
     st.markdown("###")
     calcola_btn = st.button("CALCOLA PREVENTIVO E DISTANZA", type="primary")
 
@@ -135,20 +142,36 @@ with col_right:
                         pdf.set_margins(10, 10, 10)
                         pdf.add_page()
 
-                        # Intestazione Azienda in alto a destra
+                        # GESTIONE DEL LOGO (Caricato da UI o salvato in locale)
+                        logo_path = None
+                        if uploaded_logo is not None:
+                            # Salva temporaneamente il file caricato dall'utente
+                            with open("temp_uploaded_logo.png", "wb") as f:
+                                f.write(uploaded_logo.getbuffer())
+                            logo_path = "temp_uploaded_logo.png"
+                        elif os.path.exists("logo.png"):
+                            logo_path = "logo.png"
+                        elif os.path.exists("logo.jpg"):
+                            logo_path = "logo.jpg"
+
+                        if logo_path:
+                            # Inserimento logo in alto a sinistra
+                            pdf.image(logo_path, x=10, y=10, w=35)
+
+                        # Intestazione Dati Azienda in alto a destra
                         pdf.set_font("Helvetica", "B", 12)
                         pdf.cell(0, 5, "LOGICALC LOGISTICS S.R.L.", ln=True, align="R")
                         pdf.set_font("Helvetica", "", 8)
                         pdf.cell(0, 4, "Via Trasporti Nazionali 15", ln=True, align="R")
                         pdf.cell(0, 4, "20100 Milano (MI) - P.IVA 01234567890", ln=True, align="R")
-                        pdf.ln(3)
+                        pdf.ln(6)
 
                         # Barra Titolo Documento
                         pdf.set_fill_color(220, 220, 220)
                         pdf.set_font("Helvetica", "B", 10)
                         pdf.cell(190, 6, " PREVENTIVO DI TRASPORTO / ORDINE", border=1, ln=True, fill=True)
 
-                        # Box Intestatario e Luogo di Destinazione (Griglia a 2 colonne)
+                        # Box Intestatario e Luogo di Destinazione
                         y_before_boxes = pdf.get_y()
                         pdf.rect(10, y_before_boxes, 95, 22)
                         pdf.rect(105, y_before_boxes, 95, 22)
@@ -173,23 +196,20 @@ with col_right:
                         pdf.set_text_color(0, 0, 0)
                         pdf.multi_cell(90, 4, f"Destinazione: {destinazione.title()}")
 
-                        # Spostamento sotto i box
                         pdf.set_xy(10, y_before_boxes + 22)
 
-                        # Griglia Dati Documento (Numero, Data, Codice, Pagamento)
+                        # Griglia Dati Documento
                         pdf.set_font("Helvetica", "", 6)
                         pdf.set_text_color(80, 80, 80)
                         
                         cols_w = [35, 30, 30, 45, 50]
                         
-                        # Row Etichette
                         pdf.cell(cols_w[0], 3, "NUMERO PREVENTIVO", border="LRT", align="C")
                         pdf.cell(cols_w[1], 3, "DATA DOC.", border="LRT", align="C")
                         pdf.cell(cols_w[2], 3, "COD. CLIENTE", border="LRT", align="C")
                         pdf.cell(cols_w[3], 3, "MODALITA DI PAGAMENTO", border="LRT", align="C")
                         pdf.cell(cols_w[4], 3, "DISTANZA CALCOLATA", border="LRT", align="C", ln=True)
 
-                        # Row Valori
                         pdf.set_font("Helvetica", "B", 8)
                         pdf.set_text_color(0, 0, 0)
                         data_oggi = datetime.now().strftime("%d/%m/%Y")
@@ -204,7 +224,7 @@ with col_right:
                         pdf.ln(1)
 
                         # Intestazione Tabella Prodotti / Servizi
-                        col_tbl = [20, 85, 12, 18, 22, 18, 15] # Total 190mm
+                        col_tbl = [20, 85, 12, 18, 22, 18, 15]
                         pdf.set_font("Helvetica", "B", 7)
                         pdf.set_fill_color(230, 230, 230)
 
@@ -216,7 +236,6 @@ with col_right:
                         pdf.cell(col_tbl[5], 5, "IMPONIBILE", border=1, align="C", fill=True)
                         pdf.cell(col_tbl[6], 5, "PERC IVA", border=1, align="C", fill=True, ln=True)
 
-                        # Salviamo la posizione di inizio tabella per disegnare la griglia verticale
                         y_start_table = pdf.get_y()
 
                         # Righe della Tabella
@@ -224,7 +243,7 @@ with col_right:
 
                         # Riga 1: Trasporto
                         pdf.cell(col_tbl[0], 5, "TRASP-01", align="C")
-                        pdf.cell(col_tbl[1], 5, f"Servizio trasporto merci su strada", align="L")
+                        pdf.cell(col_tbl[1], 5, "Servizio trasporto merci su strada", align="L")
                         pdf.cell(col_tbl[2], 5, "Km", align="C")
                         pdf.cell(col_tbl[3], 5, f"{km}", align="C")
                         pdf.cell(col_tbl[4], 5, f"{TARIFFA_KM_FISSA:.2f}", align="R")
@@ -240,24 +259,21 @@ with col_right:
                         pdf.cell(col_tbl[5], 5, f"{spese_extra:.2f}", align="R")
                         pdf.cell(col_tbl[6], 5, "22%", align="C", ln=True)
 
-                        # Disegniamo la scatola verticale estesa (Stile Passepartout ERP)
-                        table_height = 140 # Altezza fissa corpo tabella
+                        # Griglia verticale continua (Stile ERP)
+                        table_height = 140
                         pdf.rect(10, y_start_table, 190, table_height)
 
-                        # Linee divisorie verticali per le colonne
                         x_curr = 10
                         for w in col_tbl[:-1]:
                             x_curr += w
                             pdf.line(x_curr, y_start_table, x_curr, y_start_table + table_height)
 
-                        # Posizioniamo il cursore sotto la griglia della tabella
                         pdf.set_xy(10, y_start_table + table_height + 2)
 
-                        # Riquadro Totali in Basso (3 righe di riepilogo)
+                        # Riquadro Totali in Basso
                         pdf.set_font("Helvetica", "", 6)
                         pdf.set_text_color(80, 80, 80)
 
-                        # Riga Totali 1
                         pdf.cell(40, 3, "IMPONIBILE TRASPORTO", border="LRT", align="C")
                         pdf.cell(40, 3, "PEDAGGI / EXTRA", border="LRT", align="C")
                         pdf.cell(35, 3, "TOTALE IMPONIBILE", border="LRT", align="C")
@@ -271,11 +287,10 @@ with col_right:
                         pdf.cell(35, 5, f"Euro {totale_imponibile:.2f}", border="LRB", align="C")
                         pdf.cell(35, 5, f"Euro {iva_22:.2f}", border="LRB", align="C")
                         
-                        # Box Totale Evidenziato in Grassetto/Corsivo
                         pdf.set_font("Helvetica", "BI", 10)
                         pdf.cell(40, 5, f"Euro {totale_generale:.2f}", border="LRB", align="C", ln=True)
 
-                        # Note Legali a pie' di pagina
+                        # Note Legali
                         pdf.ln(3)
                         pdf.set_font("Helvetica", "", 6)
                         pdf.set_text_color(100, 100, 100)
