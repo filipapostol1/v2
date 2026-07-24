@@ -69,7 +69,14 @@ st.markdown("---")
 col_left, col_right = st.columns([1, 1], gap="large")
 
 with col_left:
-    st.subheader("Dettagli della Tratta")
+    st.subheader("Dati Anagrafici e Tratta")
+
+    # NUOVO CAMPO: Nome Cliente / Mittente personalizzabile
+    nome_mittente = st.text_input(
+        "Nome Cliente / Mittente",
+        value="ACME S.r.l.",
+        help="Inserire la ragione sociale o il nome del cliente intestatario del documento.",
+    )
 
     partenza = st.text_input(
         "Indirizzo / Città di Partenza",
@@ -156,7 +163,7 @@ with col_right:
 
                         # Box Intestatario e Luogo di Destinazione
                         y_boxes = pdf.get_y()
-                        box_h = 24  # Altezza fissa dei due riquadri
+                        box_h = 24
 
                         pdf.rect(10, y_boxes, 95, box_h)
                         pdf.rect(105, y_boxes, 95, box_h)
@@ -167,10 +174,12 @@ with col_right:
                         pdf.set_text_color(100, 100, 100)
                         pdf.cell(91, 3, "INTESTATARIO / ORIGINE", ln=False)
 
+                        # NOME MITTENTE PERSONALIZZATO
                         pdf.set_xy(12, y_boxes + 6)
                         pdf.set_font("Helvetica", "B", 8)
                         pdf.set_text_color(0, 0, 0)
-                        pdf.cell(91, 4, "CLIENTE B2B / MITTENTE", ln=False)
+                        valore_mittente = nome_mittente.strip().upper() if nome_mittente else "CLIENTE B2B"
+                        pdf.cell(91, 4, valore_mittente, ln=False)
 
                         pdf.set_xy(12, y_boxes + 11)
                         pdf.set_font("Helvetica", "", 8)
