@@ -1,5 +1,6 @@
 from datetime import datetime
 import os
+import tempfile
 import requests
 import streamlit as st
 from fpdf import FPDF
@@ -8,11 +9,8 @@ from fpdf import FPDF
 st.set_page_config(
     page_title="LogiCalc B2B - Calcolo Tratte & Preventivi",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
-
-# TARIFFA AZIENDALE FISSA
-TARIFFA_KM_FISSA = 1.65
 
 # Custom CSS per l'interfaccia web
 st.markdown(
@@ -35,8 +33,49 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# ==========================================
+# 2. BARRA LATERALE: DATI AZIENDA EMITTENTE
+# ==========================================
+st.sidebar.header("⚙️ Configurazione Azienda")
+st.sidebar.caption("Personalizza i dati dell'emittente del preventivo")
 
-# 2. FUNZIONI API GEOLOCALIZZAZIONE E PERCORSO
+azienda_nome = st.sidebar.text_input(
+    "Ragione Sociale",
+    value="APOSTOL TRASPORTI S.R.L.",
+    help="Nome della tua azienda che apparirà nel PDF",
+)
+
+azienda_indirizzo = st.sidebar.text_input(
+    "Indirizzo Sede",
+    value="Via Trasporti Nazionali 15, Milano",
+    help="Indirizzo della tua azienda",
+)
+
+azienda_piva = st.sidebar.text_input(
+    "P.IVA / Codice Fiscale",
+    value="P.IVA 01234567890",
+    help="Dati fiscali dell'emittente",
+)
+
+tariffa_km = st.sidebar.number_input(
+    "Tariffa Predefinita (€/Km)",
+    value=1.65,
+    step=0.05,
+    format="%.2f",
+    help="Costo al chilometro applicato per i trasporti",
+)
+
+logo_caricato = st.sidebar.file_uploader(
+    "Carica Logo Aziendale (PNG/JPG)",
+    type=["jpg", "jpeg", "png"],
+    help="Il logo apparirà in alto a sinistra sul preventivo PDF",
+)
+
+st.sidebar.markdown("---")
+st.sidebar.info("💡 Modificando questi dati, il PDF verrà automaticamente aggiornato con la nuova intestazione.")
+
+
+# 3. FUNZIONI API GEOLOCALIZZAZIONE E PERCORSO
 def ottieni_coordinate(indirizzo):
     url = f"https://nominatim.openstreetmap.org/search?q={indirizzo}&format=json&limit=1"
     headers = {"User-Agent": "LogiCalcB2B/1.0"}
@@ -61,9 +100,9 @@ def calcola_rotta(lat1, lon1, lat2, lon2):
     return None
 
 
-# 3. INTERFACCIA STREAMLIT
+# 4. INTERFACCIA PRINCIPALE DSIBOARD
 st.title("LogiCalc B2B - Sistema Calcolo Tratte e Preventivi")
-st.caption("Piattaforma professionale per la stima dei costi di trasporto stradale")
+st.caption(f"Piattaforma gestionale in uso da: **{azienda_nome}**")
 st.markdown("---")
 
 col_left, col_right = st.columns([1, 1], gap="large")
@@ -71,22 +110,21 @@ col_left, col_right = st.columns([1, 1], gap="large")
 with col_left:
     st.subheader("Dati Anagrafici e Tratta")
 
-    # NUOVO CAMPO: Nome Cliente / Mittente personalizzabile
     nome_mittente = st.text_input(
-        "Nome Cliente / Mittente",
+        "Nome Cliente / Intestatario Preventivo",
         value="ACME S.r.l.",
-        help="Inserire la ragione sociale o il nome del cliente intestatario del documento.",
+        help="Ragione sociale del cliente a cui è destinato il preventivo.",
     )
 
     partenza = st.text_input(
         "Indirizzo / Città di Partenza",
         value="Via Roma 1, Milano",
-        help="Inserire l'indirizzo completo o la città di origine.",
+        help="Punto di partenza delle merci.",
     )
     destinazione = st.text_input(
         "Indirizzo / Città di Arrivo",
         value="Via Nazionale 10, Roma",
-        help="Inserire l'indirizzo completo o la città di destinazione.",
+        help="Punto di arrivo delle merci.",
     )
 
     st.subheader("Parametri Economici")
@@ -94,8 +132,8 @@ with col_left:
     col_e1, col_e2 = st.columns(2)
     with col_e1:
         st.text_input(
-            "Tariffa / Km (EUR)",
-            value=f"{TARIFFA_KM_FISSA:.2f} (Fissa)",
+            "Tariffa / Km Applicata (EUR)",
+            value=f"{tariffa_km:.2f} €",
             disabled=True,
         )
     with col_e2:
@@ -124,7 +162,7 @@ with col_right:
                     km = calcola_rotta(lat1, lon1, lat2, lon2)
 
                     if km:
-                        costo_tratta = km * TARIFFA_KM_FISSA
+                        costo_tratta = km * tariffa_km
                         totale_imponibile = costo_tratta + spese_extra
                         iva_22 = totale_imponibile * 0.22
                         totale_generale = totale_imponibile + iva_22
@@ -136,24 +174,36 @@ with col_right:
                         st.success("Calcolo del preventivo completato.")
 
                         # ==========================================
-                        # PDF STILE GESTIONALE / ERP ITALIANO
+                        # GENERAZIONE PDF DINAMICO
                         # ==========================================
                         pdf = FPDF(orientation="P", unit="mm", format="A4")
                         pdf.set_margins(10, 10, 10)
                         pdf.add_page()
 
-                        # RICERCA E INSERIMENTO AUTOMATICO LOGO AZIENDALE
-                        if os.path.exists("logo.jpg"):
-                            pdf.image("logo.jpg", x=10, y=10, w=35)
+                        # INSERIMENTO LOGO (Da upload o da file locale)
+                        logo_path = None
+                        if logo_caricato is not None:
+                            # Salva temporaneamente il logo caricato dall'utente
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_file:
+                                tmp_file.write(logo_caricato.getvalue())
+                                logo_path = tmp_file.name
+                        elif os.path.exists("logo.jpg"):
+                            logo_path = "logo.jpg"
                         elif os.path.exists("logo.png"):
-                            pdf.image("logo.png", x=10, y=10, w=35)
+                            logo_path = "logo.png"
 
-                        # Intestazione Dati Azienda in alto a destra
-                        pdf.set_font("Helvetica", "B", 12)
-                        pdf.cell(0, 5, "LOGICALC LOGISTICS S.R.L.", ln=True, align="R")
+                        if logo_path:
+                            try:
+                                pdf.image(logo_path, x=10, y=10, w=35)
+                            except Exception:
+                                pass
+
+                        # Intestazione Dati Azienda Emittente (Dinamici da Sidebar)
+                        pdf.set_font("Helvetica", "B", 11)
+                        pdf.cell(0, 5, azienda_nome.upper(), ln=True, align="R")
                         pdf.set_font("Helvetica", "", 8)
-                        pdf.cell(0, 4, "Via Trasporti Nazionali 15", ln=True, align="R")
-                        pdf.cell(0, 4, "20100 Milano (MI) - P.IVA 01234567890", ln=True, align="R")
+                        pdf.cell(0, 4, azienda_indirizzo, ln=True, align="R")
+                        pdf.cell(0, 4, azienda_piva, ln=True, align="R")
                         pdf.ln(6)
 
                         # Barra Titolo Documento
@@ -174,7 +224,6 @@ with col_right:
                         pdf.set_text_color(100, 100, 100)
                         pdf.cell(91, 3, "INTESTATARIO / ORIGINE", ln=False)
 
-                        # NOME MITTENTE PERSONALIZZATO
                         pdf.set_xy(12, y_boxes + 6)
                         pdf.set_font("Helvetica", "B", 8)
                         pdf.set_text_color(0, 0, 0)
@@ -200,7 +249,6 @@ with col_right:
                         pdf.set_font("Helvetica", "", 8)
                         pdf.multi_cell(91, 4, f"Destinazione: {destinazione.title()}")
 
-                        # Riposizionamento del cursore sotto i due box
                         pdf.set_xy(10, y_boxes + box_h)
 
                         # Griglia Dati Documento
@@ -251,7 +299,7 @@ with col_right:
                         pdf.cell(col_tbl[1], 5, "Servizio trasporto merci su strada", align="L")
                         pdf.cell(col_tbl[2], 5, "Km", align="C")
                         pdf.cell(col_tbl[3], 5, f"{km}", align="C")
-                        pdf.cell(col_tbl[4], 5, f"{TARIFFA_KM_FISSA:.2f}", align="R")
+                        pdf.cell(col_tbl[4], 5, f"{tariffa_km:.2f}", align="R")
                         pdf.cell(col_tbl[5], 5, f"{costo_tratta:.2f}", align="R")
                         pdf.cell(col_tbl[6], 5, "22%", align="C", ln=True)
 
