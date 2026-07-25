@@ -34,7 +34,7 @@ def salva_in_cronologia(record):
         json.dump(cronologia, f, ensure_ascii=False, indent=4)
 
 def pulisci_testo(testo):
-    """Rimuove caratteri strani che fanno crashare il generatore PDF o accavallare i testi."""
+    """Rimuove caratteri speciali per evitare errori di codifica nel PDF."""
     if not testo: return ""
     testo = str(testo).replace("€", "EUR").replace("’", "'").replace("“", '"').replace("”", '"').replace("\n", " ")
     return testo.encode('latin-1', 'ignore').decode('latin-1')
@@ -52,7 +52,7 @@ st.markdown(
 
 
 # ==========================================
-# 2. BARRA LATERALE DINAMICA (MENU)
+# 2. BARRA LATERALE DINAMICA (MENU & CAMPI)
 # ==========================================
 st.sidebar.title("📌 Navigazione")
 pagina_selezionata = st.sidebar.radio(
@@ -68,7 +68,7 @@ vettore_indirizzo = st.sidebar.text_input("Indirizzo Sede", value="VIA EMILIO BI
 vettore_albo = st.sidebar.text_input("N° Iscrizione Albo", value="SP/3602624/M")
 logo_caricato = st.sidebar.file_uploader("Logo Aziendale (Opzionale)", type=["jpg", "jpeg", "png"])
 
-# VARIABILI DINAMICHE SOLO PER LA BOLLA
+# VARIABILI PREDEFINITE MEZZO
 default_trattore = "GD613CR"
 default_rimorchio = "XA762KF"
 default_autista = "APOSTOL CATALIN"
@@ -82,7 +82,7 @@ if pagina_selezionata == "📄 Lettera di Vettura (Bolla)":
 
 
 # ==========================================
-# 3. MOTORE API ANTI-BLOCCO
+# 3. MOTORE API ANTI-BLOCCO (OSRM / NOMINATIM)
 # ==========================================
 def ottieni_coordinate(indirizzo):
     if not indirizzo or not indirizzo.strip(): return None, None
@@ -173,58 +173,61 @@ if pagina_selezionata == "📊 Preventivi & Pedaggi":
                             m2.metric("Pedaggio Stimato", f"EUR {pedaggio_stimato:.2f}")
                             st.metric("Totale Preventivo (IVA Inclusa)", f"EUR {totale_generale:.2f}")
 
-                            # PDF PREVENTIVO CON STILE UNIFICATO
-                            pdf = FPDF()
+                            # PDF PREVENTIVO CON STILE A GRIGLIA UNIFICATO
+                            pdf = FPDF(orientation='P', unit='mm', format='A4')
+                            pdf.set_margins(10, 10, 10)
                             pdf.add_page()
-                            # Logo
+                            
                             if logo_caricato is not None:
                                 with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
                                     tmp.write(logo_caricato.getvalue())
                                     try: pdf.image(tmp.name, x=10, y=10, w=35)
                                     except: pass
                             
-                            # Intestazione Standard
+                            pdf.set_font("Helvetica", "B", 11)
+                            pdf.cell(120, 5, pulisci_testo(vettore_nome).upper(), ln=False)
                             pdf.set_font("Helvetica", "B", 12)
-                            pdf.cell(0, 5, pulisci_testo(vettore_nome).upper(), ln=True, align="R")
-                            pdf.set_font("Helvetica", "", 8)
-                            pdf.cell(0, 4, f"Sede: {pulisci_testo(vettore_indirizzo)[:50]} - P.IVA: {pulisci_testo(vettore_piva)}", ln=True, align="R")
-                            pdf.cell(0, 4, f"Albo: {pulisci_testo(vettore_albo)}", ln=True, align="R")
-                            pdf.ln(8)
+                            pdf.cell(70, 5, "PREVENTIVO TRASPORTO", align="R", ln=True)
 
-                            # Banda Blu Titolo
+                            pdf.set_font("Helvetica", "", 7)
+                            pdf.cell(120, 3.5, f"Sede: {pulisci_testo(vettore_indirizzo)} - P.IVA: {pulisci_testo(vettore_piva)}", ln=False)
+                            pdf.cell(70, 3.5, f"Data: {datetime.now().strftime('%d/%m/%Y')}", align="R", ln=True)
+                            pdf.cell(120, 3.5, f"Albo: {pulisci_testo(vettore_albo)}", ln=True)
+                            pdf.ln(3)
+
                             pdf.set_fill_color(30, 58, 138)
                             pdf.set_text_color(255, 255, 255)
-                            pdf.set_font("Helvetica", "B", 11)
-                            pdf.cell(190, 7, " PREVENTIVO TRASPORTO MERCI", ln=True, fill=True)
+                            pdf.set_font("Helvetica", "B", 10)
+                            pdf.cell(190, 6, " DETTAGLI PREVENTIVO E TRATTA", ln=True, fill=True)
                             pdf.set_text_color(0, 0, 0)
-                            pdf.ln(4)
+                            pdf.ln(2)
 
-                            # Corpo Preventivo
-                            pdf.set_font("Helvetica", "", 9)
-                            pdf.cell(95, 5, f"Cliente: {pulisci_testo(cliente_nome)}", border=1)
-                            pdf.cell(95, 5, f"Data: {datetime.now().strftime('%d/%m/%Y')}", border=1, ln=True)
-                            pdf.cell(95, 5, f"Partenza: {pulisci_testo(partenza)}", border=1)
-                            pdf.cell(95, 5, f"Destinazione: {pulisci_testo(destinazione)}", border=1, ln=True)
-                            pdf.cell(190, 5, f"Viaggio: {tipo_viaggio} ({km_totali} Km) - Classe: {classe_veicolo}", border=1, ln=True)
+                            pdf.set_font("Helvetica", "", 8)
+                            pdf.cell(95, 6, f"Cliente: {pulisci_testo(cliente_nome)}", border=1)
+                            pdf.cell(95, 6, f"Tipologia Viaggio: {tipo_viaggio}", border=1, ln=True)
+                            pdf.cell(95, 6, f"Partenza: {pulisci_testo(partenza)}", border=1)
+                            pdf.cell(95, 6, f"Destinazione: {pulisci_testo(destinazione)}", border=1, ln=True)
+                            pdf.cell(190, 6, f"Distanza Calcolata: {km_totali} Km | Classe Veicolo: {classe_veicolo}", border=1, ln=True)
                             
-                            pdf.ln(5)
-                            pdf.set_font("Helvetica", "B", 9)
+                            pdf.ln(4)
+                            pdf.set_font("Helvetica", "B", 8)
+                            pdf.set_fill_color(230, 230, 230)
                             pdf.cell(130, 6, "Voce di Costo", border=1, fill=True)
                             pdf.cell(60, 6, "Importo (EUR)", border=1, ln=True, align="R", fill=True)
                             
-                            pdf.set_font("Helvetica", "", 9)
+                            pdf.set_font("Helvetica", "", 8)
                             pdf.cell(130, 6, f"Servizio Trasporto ({km_totali} Km x {tariffa_km:.2f} EUR/Km)", border=1)
                             pdf.cell(60, 6, f"{costo_trasporto:.2f}", border=1, ln=True, align="R")
                             pdf.cell(130, 6, f"Stima Pedaggio Autostradale", border=1)
                             pdf.cell(60, 6, f"{pedaggio_stimato:.2f}", border=1, ln=True, align="R")
 
-                            pdf.set_font("Helvetica", "B", 10)
-                            pdf.cell(130, 7, "TOTALE IMPONIBILE", border=1)
-                            pdf.cell(60, 7, f"{totale_imponibile:.2f}", border=1, ln=True, align="R")
-                            pdf.cell(130, 7, "IVA 22%", border=1)
-                            pdf.cell(60, 7, f"{iva_22:.2f}", border=1, ln=True, align="R")
-                            pdf.cell(130, 8, "TOTALE GENERALE", border=1)
-                            pdf.cell(60, 8, f"{totale_generale:.2f} EUR", border=1, ln=True, align="R")
+                            pdf.set_font("Helvetica", "B", 9)
+                            pdf.cell(130, 6, "TOTALE IMPONIBILE", border=1)
+                            pdf.cell(60, 6, f"{totale_imponibile:.2f}", border=1, ln=True, align="R")
+                            pdf.cell(130, 6, "IVA 22%", border=1)
+                            pdf.cell(60, 6, f"{iva_22:.2f}", border=1, ln=True, align="R")
+                            pdf.cell(130, 7, "TOTALE GENERALE", border=1)
+                            pdf.cell(60, 7, f"{totale_generale:.2f} EUR", border=1, ln=True, align="R")
 
                             pdf_bytes = pdf.output(dest="S").encode("latin-1", "replace")
                             st.download_button("📥 SCARICA PREVENTIVO PDF", data=pdf_bytes, file_name=f"Preventivo_{pulisci_testo(cliente_nome)}.pdf", mime="application/pdf")
@@ -256,118 +259,120 @@ elif pagina_selezionata == "📄 Lettera di Vettura (Bolla)":
     caricatore2 = st.text_input("2° Caricatore (Opzionale)", value="")
 
     if st.button("GENERA LETTERA DI VETTURA (PDF)", type="primary"):
-        pdf_b = FPDF()
+        pdf_b = FPDF(orientation='P', unit='mm', format='A4')
+        pdf_b.set_margins(10, 10, 10)
         pdf_b.add_page()
 
-        # Logo (Stessa logica)
         if logo_caricato is not None:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
                 tmp.write(logo_caricato.getvalue())
                 try: pdf_b.image(tmp.name, x=10, y=10, w=35)
                 except: pass
 
-        # Intestazione Standard (Identica al Preventivo per stile unificato)
+        # Intestazione Perfettamente Allineata
+        pdf_b.set_font("Helvetica", "B", 11)
+        pdf_b.cell(120, 5, pulisci_testo(vettore_nome).upper(), ln=False)
         pdf_b.set_font("Helvetica", "B", 12)
-        pdf_b.cell(0, 5, pulisci_testo(vettore_nome).upper(), ln=True, align="R")
-        pdf_b.set_font("Helvetica", "", 8)
-        pdf_b.cell(0, 4, f"Sede: {pulisci_testo(vettore_indirizzo)[:50]} - P.IVA: {pulisci_testo(vettore_piva)}", ln=True, align="R")
-        pdf_b.cell(0, 4, f"Albo: {pulisci_testo(vettore_albo)} | Data: {datetime.now().strftime('%d/%m/%Y')}", ln=True, align="R")
-        pdf_b.ln(8)
+        pdf_b.cell(70, 5, "LETTERA DI VETTURA", align="R", ln=True)
 
-        # Banda Blu Titolo - Stile Unificato
+        pdf_b.set_font("Helvetica", "", 7)
+        pdf_b.cell(120, 3.5, f"Sede: {pulisci_testo(vettore_indirizzo)} - P.IVA: {pulisci_testo(vettore_piva)}", ln=False)
+        pdf_b.cell(70, 3.5, f"Data: {datetime.now().strftime('%d/%m/%Y')} | Ref: {pulisci_testo(booking_ref)}", align="R", ln=True)
+        pdf_b.cell(120, 3.5, f"Iscrizione Albo Autotrasporti: {pulisci_testo(vettore_albo)}", ln=True)
+        pdf_b.ln(3)
+
+        # Banda Blu Titolo
         pdf_b.set_fill_color(30, 58, 138)
         pdf_b.set_text_color(255, 255, 255)
-        pdf_b.set_font("Helvetica", "B", 11)
-        pdf_b.cell(190, 7, " LETTERA DI VETTURA / DOCUMENTO DI TRASPORTO", ln=True, fill=True)
+        pdf_b.set_font("Helvetica", "B", 10)
+        pdf_b.cell(190, 6, " DOCUMENTO DI TRASPORTO / ESECUZIONE VIAGGIO", ln=True, fill=True)
         pdf_b.set_text_color(0, 0, 0)
-        pdf_b.ln(4)
+        pdf_b.ln(2)
 
-        # ====== FIX SOVRASCRIZIONE ======
-        # Invece di sovrapporre righe, calcoliamo le altezze e blocchiamo i box (Multi_cell)
+        # ====== GRIGLIA BOX AFFIANCATI (COMMITTENTE / VETTORE) ======
         y_start = pdf_b.get_y()
+        pdf_b.rect(10, y_start, 93, 22)
+        pdf_b.rect(106, y_start, 94, 22)
 
-        # BOX SINISTRO: COMMITTENTE
-        pdf_b.set_xy(10, y_start)
+        pdf_b.set_xy(12, y_start + 1)
+        pdf_b.set_font("Helvetica", "B", 7)
+        pdf_b.cell(89, 3, "COMMITTENTE / ORDINANTE", ln=True)
+        pdf_b.set_font("Helvetica", "", 7)
+        pdf_b.cell(89, 3, f"Ragione Soc: {pulisci_testo(committente)}", ln=True)
+        pdf_b.cell(89, 3, f"Indirizzo: {pulisci_testo(comm_indirizzo)}", ln=True)
+        pdf_b.cell(89, 3, f"P.IVA: {pulisci_testo(comm_piva)}", ln=True)
+
+        pdf_b.set_xy(108, y_start + 1)
+        pdf_b.set_font("Helvetica", "B", 7)
+        pdf_b.cell(90, 3, "VETTORE / ESECUTORE", ln=True)
+        pdf_b.set_font("Helvetica", "", 7)
+        pdf_b.cell(90, 3, f"Mezzo: {pulisci_testo(default_trattore)} / {pulisci_testo(default_rimorchio)}", ln=True)
+        pdf_b.cell(90, 3, f"Autista: {pulisci_testo(default_autista)}", ln=True)
+        pdf_b.cell(90, 3, f"Booking Ref: {pulisci_testo(booking_ref)}", ln=True)
+
+        pdf_b.set_y(y_start + 24)
+
+        # SPECIFICHE DI CARICO E TRATTA
         pdf_b.set_font("Helvetica", "B", 8)
-        pdf_b.cell(92, 5, "COMMITTENTE", border=1, fill=True, ln=True)
-        pdf_b.set_font("Helvetica", "", 8)
-        testo_comm = f"Ragione Soc: {pulisci_testo(committente)}\nIndirizzo: {pulisci_testo(comm_indirizzo)}\nP.IVA: {pulisci_testo(comm_piva)}"
-        pdf_b.multi_cell(92, 5, testo_comm, border=1)
-        y_end_sinistra = pdf_b.get_y()
-
-        # BOX DESTRO: VETTORE
-        pdf_b.set_xy(105, y_start)
-        pdf_b.set_font("Helvetica", "B", 8)
-        pdf_b.cell(95, 5, "VETTORE ED ESECUTORE", border=1, fill=True, ln=True)
-        pdf_b.set_xy(105, y_start + 5) # Riposiziona il cursore sotto il titolo destro
-        pdf_b.set_font("Helvetica", "", 8)
-        testo_vet = f"Mezzo: {pulisci_testo(default_trattore)} / {pulisci_testo(default_rimorchio)}\nAutista: {pulisci_testo(default_autista)}\nRef / Booking: {pulisci_testo(booking_ref)}"
-        pdf_b.multi_cell(95, 5, testo_vet, border=1)
-        y_end_destra = pdf_b.get_y()
-
-        # Riprendiamo a scrivere sotto il box più lungo (anti-accavallamento)
-        pdf_b.set_y(max(y_end_sinistra, y_end_destra) + 4)
-
-        # TRATTA E CARICO
-        pdf_b.set_font("Helvetica", "B", 8)
-        pdf_b.cell(190, 5, " SPECIFICHE DI CARICO", border=1, ln=True, fill=True)
-        pdf_b.set_font("Helvetica", "", 8)
+        pdf_b.set_fill_color(230, 230, 230)
+        pdf_b.cell(190, 5, " TRATTA E SPECIFICHE MERCE", border=1, ln=True, fill=True)
         
-        # Uso stringhe formattate con limiti massimi per evitare di uscire dalle celle
-        pdf_b.cell(95, 6, f"Ritiro: {pulisci_testo(ritiro_luogo)[:50]}", border=1)
-        pdf_b.cell(95, 6, f"Scarico: {pulisci_testo(scarico_luogo)[:50]}", border=1, ln=True)
+        pdf_b.set_font("Helvetica", "", 7.5)
+        pdf_b.cell(95, 5, f"Luogo Ritiro: {pulisci_testo(ritiro_luogo)}", border=1)
+        pdf_b.cell(95, 5, f"Luogo Scarico: {pulisci_testo(scarico_luogo)}", border=1, ln=True)
         
-        pdf_b.cell(60, 6, f"Merce: {pulisci_testo(merce_desc)[:30]}", border=1)
-        pdf_b.cell(45, 6, f"Cont: {pulisci_testo(tipo_container)}", border=1)
-        pdf_b.cell(50, 6, f"Sigillo/N°: {pulisci_testo(n_container)[:20]}", border=1)
-        pdf_b.cell(35, 6, f"Peso: {pulisci_testo(peso_kg)} Kg", border=1, ln=True)
+        pdf_b.cell(60, 5, f"Merce: {pulisci_testo(merce_desc)}", border=1)
+        pdf_b.cell(45, 5, f"Container: {pulisci_testo(tipo_container)}", border=1)
+        pdf_b.cell(50, 5, f"N° Container: {pulisci_testo(n_container)}", border=1)
+        pdf_b.cell(35, 5, f"Peso: {pulisci_testo(peso_kg)} Kg", border=1, ln=True)
 
-        pdf_b.ln(4)
+        pdf_b.ln(3)
 
-        # REGISTRO ORARI E FIRME
+        # TABELLA ORARI E OPERAZIONI (GRIGLIA PULITA)
         pdf_b.set_font("Helvetica", "B", 8)
+        pdf_b.set_fill_color(220, 220, 220)
         pdf_b.cell(80, 5, "PUNTO DI CARICO / SCARICO", border=1, fill=True)
         pdf_b.cell(50, 5, "ORA ARRIVO / PARTENZA", border=1, align="C", fill=True)
         pdf_b.cell(60, 5, "SIGILLI / NOTE / FIRMA", border=1, align="C", fill=True, ln=True)
 
-        pdf_b.set_font("Helvetica", "", 8)
+        pdf_b.set_font("Helvetica", "", 7.5)
         punti = []
         if caricatore1: punti.append(f"1° Carico: {caricatore1}")
         if caricatore2: punti.append(f"2° Carico: {caricatore2}")
-        if ritiro_luogo: punti.append(f"Ritiro: {ritiro_luogo}")
-        if scarico_luogo: punti.append(f"Scarico: {scarico_luogo}")
+        if ritiro_luogo: punti.append(f"Terminal Ritiro: {ritiro_luogo}")
+        if scarico_luogo: punti.append(f"Consegna: {scarico_luogo}")
 
         for p in punti:
-            # Tronco a 55 caratteri per garantire che entri sempre in una riga singola
             testo_troncato = pulisci_testo(p)[:55]
-            pdf_b.cell(80, 8, testo_troncato, border=1)
-            pdf_b.cell(50, 8, "", border=1)
-            pdf_b.cell(60, 8, "", border=1, ln=True)
+            pdf_b.cell(80, 7, testo_troncato, border=1)
+            pdf_b.cell(50, 7, "", border=1)
+            pdf_b.cell(60, 7, "", border=1, ln=True)
 
-        pdf_b.ln(4)
+        pdf_b.ln(3)
 
-        # FIRME FINALI
-        pdf_b.set_font("Helvetica", "B", 8)
+        # RIQUADRI FIRME FINALI
+        pdf_b.set_font("Helvetica", "B", 7.5)
         pdf_b.cell(95, 5, "Firma Vettore / Autista", border="LRT", ln=False)
         pdf_b.cell(95, 5, "Firma Ricevitore / Destinatario", border="LRT", ln=True)
-        pdf_b.set_font("Helvetica", "", 8)
+        pdf_b.set_font("Helvetica", "", 7.5)
         pdf_b.cell(95, 12, "", border="LRB", ln=False)
         pdf_b.cell(95, 12, "", border="LRB", ln=True)
 
+        # NOTE LEGALI
         pdf_b.ln(3)
-        pdf_b.set_font("Helvetica", "", 6)
-        pdf_b.multi_cell(190, 3, "CONDIZIONI DI TRASPORTO: Il trasporto è eseguito nel rispetto delle disposizioni legislative sulla circolazione stradale. Il ricevitore è tenuto a verificare integrità e numero di sigillo in presenza dell'autista. Merci assicurate secondo polizza vettoriale italiana.")
+        pdf_b.set_font("Helvetica", "", 5)
+        pdf_b.multi_cell(190, 2.5, "CONDIZIONI DI TRASPORTO: Il trasporto è eseguito nel rispetto delle disposizioni legislative sulla circolazione stradale. Il ricevitore è tenuto a verificare integrità e numero di sigillo in presenza dell'autista. Merci assicurate secondo polizza vettoriale italiana.")
 
         pdf_bytes_b = pdf_b.output(dest="S").encode("latin-1", "replace")
-        st.download_button("📥 SCARICA BOLLA (PDF)", data=pdf_bytes_b, file_name=f"Bolla_{pulisci_testo(booking_ref)}.pdf", mime="application/pdf")
+        st.download_button("📥 SCARICA LETTERA DI VETTURA (PDF)", data=pdf_bytes_b, file_name=f"Bolla_{pulisci_testo(booking_ref)}.pdf", mime="application/pdf")
 
 # ------------------------------------------
 # PAGINA 3: CRONOLOGIA
 # ------------------------------------------
 elif pagina_selezionata == "📜 Cronologia":
-    st.subheader("Storico Preventivi Generati")
+    st.subheader("Storico Operazioni Registrate")
     cronologia = carica_cronologia()
     if cronologia:
         st.dataframe(cronologia, use_container_width=True)
     else:
-        st.info("Nessun preventivo registrato finora.")
+        st.info("Nessuna operazione registrata finora.")
