@@ -85,52 +85,66 @@ logo_caricato = st.sidebar.file_uploader(
 
 
 # ==========================================
-# 3. FUNZIONI API GEOLOCALIZZAZIONE (CON CACHE E PROTEZIONE RATE LIMIT 429)
+# 3. MOTORE API ANTI-BLOCCO (FAILOVER & RETRY)
 # ==========================================
-@st.cache_data(ttl=86400)
 def ottieni_coordinate(indirizzo):
+    """Cerca le coordinate usando 2 server diversi per aggirare i blocchi (429)."""
     if not indirizzo or not indirizzo.strip():
         return None, None
-    url = "https://nominatim.openstreetmap.org/search"
-    params = {
-        "q": indirizzo,
-        "format": "json",
-        "limit": 1
-    }
-    headers = {
-        "User-Agent": "ApostolLogisticsApp/3.0 (gestionale@apostoltrasporti.it)"
-    }
+
+    # TENTATIVO 1: Server Principale (Nominatim)
     try:
-        response = requests.get(url, params=params, headers=headers, timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            if data and len(data) > 0:
+        url_nom = "https://nominatim.openstreetmap.org/search"
+        params_nom = {"q": indirizzo, "format": "json", "limit": 1}
+        headers = {"User-Agent": f"ApostolLogisticsApp_{int(time.time())}"}
+        
+        res_nom = requests.get(url_nom, params=params_nom, headers=headers, timeout=4)
+        if res_nom.status_code == 200:
+            data = res_nom.json()
+            if data:
                 return float(data[0]["lat"]), float(data[0]["lon"])
-            else:
-                st.warning(f"⚠️ Nessun riscontro trovato per la località: '{indirizzo}'. Prova ad aggiungere la provincia (es. '{indirizzo}, Italia').")
-        elif response.status_code == 429:
-            st.error("⚠️ Troppe richieste inviate al server delle mappe. Attendi un paio di secondi e riprova.")
-        else:
-            st.error(f"Errore server mappe (Codice {response.status_code}). Riprova tra poco.")
-    except Exception as e:
-        st.error(f"Errore di connessione durante la ricerca dell'indirizzo: {e}")
+    except Exception:
+        pass # Ignora l'errore e passa al piano B
+
+    # TENTATIVO 2: Server di Emergenza (Photon / Komoot) - Supera il blocco 429
+    try:
+        url_pho = "https://photon.komoot.io/api/"
+        params_pho = {"q": indirizzo, "limit": 1}
+        
+        res_pho = requests.get(url_pho, params=params_pho, timeout=5)
+        if res_pho.status_code == 200:
+            data = res_pho.json()
+            if data and "features" in data and len(data["features"]) > 0:
+                coords = data["features"][0]["geometry"]["coordinates"]
+                # Photon restituisce l'array al contrario: [Longitudine, Latitudine]
+                return float(coords[1]), float(coords[0])
+    except Exception:
+        pass
+    
+    st.error(f"❌ Impossibile trovare la località '{indirizzo}' (Server Mappe irraggiungibili).")
     return None, None
 
 
-@st.cache_data(ttl=86400)
 def calcola_rotta(lat1, lon1, lat2, lon2):
+    """Calcola la rotta riprovando in automatico se c'è un blocco temporaneo."""
     url = f"http://router.project-osrm.org/route/v1/driving/{lon1},{lat1};{lon2},{lat2}?overview=false"
-    try:
-        response = requests.get(url, timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            if data and "routes" in data and len(data["routes"]) > 0:
-                distanza_m = data["routes"][0]["distance"]
-                return round(distanza_m / 1000, 1)
-        elif response.status_code == 429:
-            st.error("⚠️ Troppe richieste al server dei percorsi. Attendi qualche secondo e riprova.")
-    except Exception as e:
-        st.error(f"Errore di calcolo del percorso stradale: {e}")
+    
+    for tentativo in range(3):  # Riprova fino a 3 volte
+        try:
+            response = requests.get(url, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                if "routes" in data and len(data["routes"]) > 0:
+                    distanza_m = data["routes"][0]["distance"]
+                    return round(distanza_m / 1000, 1)
+            elif response.status_code == 429:
+                time.sleep(1.5)  # Aspetta 1.5 secondi e riprova da solo
+                continue
+        except Exception:
+            time.sleep(1)
+            continue
+            
+    st.error("❌ Troppe richieste al calcolatore di percorsi. Impossibile calcolare i Km ora.")
     return None
 
 
@@ -195,13 +209,13 @@ with tab1:
             if not partenza or not destinazione or not cliente_nome:
                 st.error("Riempi i campi obbligatori (Cliente, Partenza, Destinazione).")
             else:
-                with st.spinner("Calcolo itinerario e pedaggi in corso..."):
+                with st.spinner("Ricerca percorso (Sistema Anti-Blocco attivo)..."):
                     # 1. Coordinate Partenza
                     lat1, lon1 = ottieni_coordinate(partenza)
                     
                     if lat1 and lon1:
-                        # Pausa tattica di 1.2s per non superare il limite di 1 req/sec
-                        time.sleep(1.2)
+                        # Breve pausa di cortesia tra le chiamate
+                        time.sleep(0.5)
                         
                         # 2. Coordinate Destinazione
                         lat2, lon2 = ottieni_coordinate(destinazione)
