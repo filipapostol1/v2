@@ -6,13 +6,16 @@ import requests
 import streamlit as st
 from fpdf import FPDF
 
-# 1. CONFIGURAZIONE PAGINA
+# ==========================================
+# 1. CONFIGURAZIONE PAGINA STREAMLIT
+# ==========================================
 st.set_page_config(
     page_title="Apostol Trasporti - Suite Gestionale",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
+# ARCHIVIO CRONOLOGIA LOCALE
 FILE_CRONOLOGIA = "cronologia.json"
 
 
@@ -33,7 +36,7 @@ def salva_in_cronologia(record):
         json.dump(cronologia, f, ensure_ascii=False, indent=4)
 
 
-# CSS
+# CSS Personalizzato
 st.markdown(
     """
     <style>
@@ -55,7 +58,7 @@ st.markdown(
 )
 
 # ==========================================
-# 2. BARRA LATERALE: AZIENDA & MEZZI
+# 2. BARRA LATERALE: DATI VETTORE & MEZZI
 # ==========================================
 st.sidebar.header("⚙️ Dati Vettore (Azienda)")
 
@@ -80,40 +83,59 @@ logo_caricato = st.sidebar.file_uploader(
 )
 
 
-# 3. GEOLOCALIZZAZIONE
+# ==========================================
+# 3. FUNZIONI API GEOLOCALIZZAZIONE (CORRETTE)
+# ==========================================
 def ottieni_coordinate(indirizzo):
-    url = f"https://nominatim.openstreetmap.org/search?q={indirizzo}&format=json&limit=1"
-    headers = {"User-Agent": "ApostolLogistics/2.0"}
+    url = "https://nominatim.openstreetmap.org/search"
+    params = {
+        "q": indirizzo,
+        "format": "json",
+        "limit": 1
+    }
+    headers = {
+        "User-Agent": "ApostolLogisticsApp/2.0 (gestionale@apostoltrasporti.it)"
+    }
     try:
-        response = requests.get(url, headers=headers).json()
-        if response:
-            return float(response[0]["lat"]), float(response[0]["lon"])
-    except Exception:
-        return None, None
+        response = requests.get(url, params=params, headers=headers, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            if data and len(data) > 0:
+                return float(data[0]["lat"]), float(data[0]["lon"])
+            else:
+                st.warning(f"⚠️ Nessun riscontro trovato per la località: '{indirizzo}'. Prova ad aggiungere la provincia o la nazione (es. '{indirizzo}, Italia').")
+        else:
+            st.error(f"Errore server mappe (Codice {response.status_code}). Riprova tra poco.")
+    except Exception as e:
+        st.error(f"Errore di connessione durante la ricerca dell'indirizzo: {e}")
     return None, None
 
 
 def calcola_rotta(lat1, lon1, lat2, lon2):
     url = f"http://router.project-osrm.org/route/v1/driving/{lon1},{lat1};{lon2},{lat2}?overview=false"
     try:
-        response = requests.get(url).json()
-        if response and "routes" in response and len(response["routes"]) > 0:
-            distanza_m = response["routes"][0]["distance"]
-            return round(distanza_m / 1000, 1)
-    except Exception:
-        return None
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            if data and "routes" in data and len(data["routes"]) > 0:
+                distanza_m = data["routes"][0]["distance"]
+                return round(distanza_m / 1000, 1)
+    except Exception as e:
+        st.error(f"Errore di calcolo del percorso stradale: {e}")
     return None
 
 
-# 4. INTERFACCIA A SCHEDE (TABS)
+# ==========================================
+# 4. INTERFACCIA PRINCIPALE A SCHEDE (TABS)
+# ==========================================
 st.title("Apostol Trasporti - Suite Gestionale")
 tab1, tab2, tab3 = st.tabs(
     ["📊 Preventivi & Pedaggi", "📄 Lettera di Vettura (Bolla)", "📜 Cronologia"]
 )
 
-# ==========================================
+# ------------------------------------------
 # TAB 1: PREVENTIVI & CALCOLO PEDAGGI
-# ==========================================
+# ------------------------------------------
 with tab1:
     st.subheader("Calcolo Preventivo Tratta & Pedaggi Autostradali")
 
@@ -141,7 +163,7 @@ with tab1:
             index=3,
         )
 
-        # Stima costo pedaggio al Km basato sulla classe veicolo italiana
+        # Stima costo pedaggio al Km basato sulla classe del veicolo
         costi_pedaggio_km = {
             "Auto / Furgone (2 Assi)": 0.09,
             "Camion 3 Assi": 0.14,
@@ -161,105 +183,123 @@ with tab1:
     with col_r:
         st.markdown("#### Risultato Calcolo")
         if btn_calc:
-            lat1, lon1 = ottieni_coordinate(partenza)
-            lat2, lon2 = ottieni_coordinate(destinazione)
-
-            if lat1 and lat2:
-                km_singoli = calcola_rotta(lat1, lon1, lat2, lon2)
-                if km_singoli:
-                    moltiplicatore = 2 if tipo_viaggio == "Andata e Ritorno" else 1
-                    km_totali = round(km_singoli * moltiplicatore, 1)
-
-                    # Calcolo Pedaggio stimato su quota autostradale (~85% della tratta)
-                    km_autostrada = km_totali * 0.85
-                    pedaggio_stimato = round(km_autostrada * stima_pedaggio_km, 2)
-
-                    costo_trasporto = round(km_totali * tariffa_km, 2)
-                    totale_imponibile = round(costo_trasporto + pedaggio_stimato + spese_extra, 2)
-                    iva_22 = round(totale_imponibile * 0.22, 2)
-                    totale_generale = round(totale_imponibile + iva_22, 2)
-
-                    # Salvataggio
-                    salva_in_cronologia({
-                        "Data": datetime.now().strftime("%d/%m/%Y %H:%M"),
-                        "Tipo": "Preventivo",
-                        "Cliente": cliente_nome,
-                        "Tratta": f"{partenza} -> {destinazione} ({tipo_viaggio})",
-                        "Km": km_totali,
-                        "Pedaggio Est.": f"€ {pedaggio_stimato:.2f}",
-                        "Totale (€)": f"€ {totale_generale:.2f}",
-                    })
-
-                    m1, m2 = st.columns(2)
-                    m1.metric("Distanza Totale", f"{km_totali} Km")
-                    m2.metric("Pedaggio Stimato", f"EUR {pedaggio_stimato:.2f}")
-
-                    st.metric("Totale Preventivo (IVA Inclusa)", f"EUR {totale_generale:.2f}")
-
-                    # PDF PREVENTIVO
-                    pdf = FPDF()
-                    pdf.add_page()
-                    pdf.set_font("Helvetica", "B", 12)
-                    pdf.cell(0, 6, vettore_nome.upper(), ln=True, align="R")
-                    pdf.set_font("Helvetica", "", 8)
-                    pdf.cell(0, 4, f"{vettore_indirizzo} - P.IVA {vettore_piva}", ln=True, align="R")
-                    pdf.ln(8)
-
-                    pdf.set_fill_color(30, 58, 138)
-                    pdf.set_text_color(255, 255, 255)
-                    pdf.set_font("Helvetica", "B", 11)
-                    pdf.cell(190, 7, " PREVENTIVO TRASPORTO MERCI", ln=True, fill=True)
-                    pdf.set_text_color(0, 0, 0)
-
-                    pdf.ln(4)
-                    pdf.set_font("Helvetica", "", 9)
-                    pdf.cell(95, 5, f"Cliente: {cliente_nome}", border=1)
-                    pdf.cell(95, 5, f"Data: {datetime.now().strftime('%d/%m/%Y')}", border=1, ln=True)
-                    pdf.cell(95, 5, f"Partenza: {partenza}", border=1)
-                    pdf.cell(95, 5, f"Destinazione: {destinazione}", border=1, ln=True)
-                    pdf.cell(190, 5, f"Tipologia Viaggio: {tipo_viaggio} ({km_totali} Km) - Veicolo: {classe_veicolo}", border=1, ln=True)
-
-                    pdf.ln(5)
-                    pdf.set_font("Helvetica", "B", 9)
-                    pdf.cell(130, 6, "Voce di Costo", border=1)
-                    pdf.cell(60, 6, "Importo (€)", border=1, ln=True, align="R")
-
-                    pdf.set_font("Helvetica", "", 9)
-                    pdf.cell(130, 6, f"Servizio Trasporto su Strada ({km_totali} Km x {tariffa_km:.2f} €/Km)", border=1)
-                    pdf.cell(60, 6, f"{costo_trasporto:.2f}", border=1, ln=True, align="R")
-
-                    pdf.cell(130, 6, f"Stima Pedaggio Autostradale ({classe_veicolo})", border=1)
-                    pdf.cell(60, 6, f"{pedaggio_stimato:.2f}", border=1, ln=True, align="R")
-
-                    if spese_extra > 0:
-                        pdf.cell(130, 6, "Spese Accessorie / Sosta", border=1)
-                        pdf.cell(60, 6, f"{spese_extra:.2f}", border=1, ln=True, align="R")
-
-                    pdf.set_font("Helvetica", "B", 10)
-                    pdf.cell(130, 7, "TOTALE IMPONIBILE", border=1)
-                    pdf.cell(60, 7, f"{totale_imponibile:.2f}", border=1, ln=True, align="R")
-                    pdf.cell(130, 7, "IVA 22%", border=1)
-                    pdf.cell(60, 7, f"{iva_22:.2f}", border=1, ln=True, align="R")
-                    pdf.cell(130, 8, "TOTALE GENERALE", border=1)
-                    pdf.cell(60, 8, f"{totale_generale:.2f} EUR", border=1, ln=True, align="R")
-
-                    pdf_out = pdf.output(dest="S")
-                    pdf_bytes = pdf_out.encode("latin-1", errors="replace") if isinstance(pdf_out, str) else bytes(pdf_out)
-
-                    st.download_button(
-                        "SCARICA PREVENTIVO PDF",
-                        data=pdf_bytes,
-                        file_name=f"Preventivo_{cliente_nome.replace(' ', '_')}.pdf",
-                        mime="application/pdf",
-                    )
-                else:
-                    st.error("Errore nel calcolo del percorso.")
+            if not partenza or not destinazione or not cliente_nome:
+                st.error("Riempi i campi obbligatori (Cliente, Partenza, Destinazione).")
             else:
-                st.error("Località non trovate.")
+                with st.spinner("Calcolo itinerario e pedaggi in corso..."):
+                    lat1, lon1 = ottieni_coordinate(partenza)
+                    lat2, lon2 = ottieni_coordinate(destinazione)
 
-# ==========================================
+                    if lat1 and lat2:
+                        km_singoli = calcola_rotta(lat1, lon1, lat2, lon2)
+                        if km_singoli:
+                            moltiplicatore = 2 if tipo_viaggio == "Andata e Ritorno" else 1
+                            km_totali = round(km_singoli * moltiplicatore, 1)
+
+                            # Calcolo Pedaggio stimato su quota autostradale (~85% della tratta)
+                            km_autostrada = km_totali * 0.85
+                            pedaggio_stimato = round(km_autostrada * stima_pedaggio_km, 2)
+
+                            costo_trasporto = round(km_totali * tariffa_km, 2)
+                            totale_imponibile = round(costo_trasporto + pedaggio_stimato + spese_extra, 2)
+                            iva_22 = round(totale_imponibile * 0.22, 2)
+                            totale_generale = round(totale_imponibile + iva_22, 2)
+
+                            # Salvataggio
+                            salva_in_cronologia({
+                                "Data": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                "Tipo": "Preventivo",
+                                "Cliente": cliente_nome,
+                                "Tratta": f"{partenza} -> {destinazione} ({tipo_viaggio})",
+                                "Km": km_totali,
+                                "Pedaggio Est.": f"€ {pedaggio_stimato:.2f}",
+                                "Totale (€)": f"€ {totale_generale:.2f}",
+                            })
+
+                            m1, m2 = st.columns(2)
+                            m1.metric("Distanza Totale", f"{km_totali} Km")
+                            m2.metric("Pedaggio Stimato", f"EUR {pedaggio_stimato:.2f}")
+
+                            st.metric("Totale Preventivo (IVA Inclusa)", f"EUR {totale_generale:.2f}")
+
+                            # GENERAZIONE PDF PREVENTIVO
+                            pdf = FPDF()
+                            pdf.add_page()
+                            
+                            # Logo
+                            logo_path = None
+                            if logo_caricato is not None:
+                                with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+                                    tmp.write(logo_caricato.getvalue())
+                                    logo_path = tmp.name
+                            elif os.path.exists("logo.jpg"):
+                                logo_path = "logo.jpg"
+                            elif os.path.exists("logo.png"):
+                                logo_path = "logo.png"
+
+                            if logo_path:
+                                try:
+                                    pdf.image(logo_path, x=10, y=10, w=35)
+                                except Exception:
+                                    pass
+
+                            pdf.set_font("Helvetica", "B", 12)
+                            pdf.cell(0, 6, vettore_nome.upper(), ln=True, align="R")
+                            pdf.set_font("Helvetica", "", 8)
+                            pdf.cell(0, 4, f"{vettore_indirizzo} - P.IVA {vettore_piva}", ln=True, align="R")
+                            pdf.ln(8)
+
+                            pdf.set_fill_color(30, 58, 138)
+                            pdf.set_text_color(255, 255, 255)
+                            pdf.set_font("Helvetica", "B", 11)
+                            pdf.cell(190, 7, " PREVENTIVO TRASPORTO MERCI", ln=True, fill=True)
+                            pdf.set_text_color(0, 0, 0)
+
+                            pdf.ln(4)
+                            pdf.set_font("Helvetica", "", 9)
+                            pdf.cell(95, 5, f"Cliente: {cliente_nome}", border=1)
+                            pdf.cell(95, 5, f"Data: {datetime.now().strftime('%d/%m/%Y')}", border=1, ln=True)
+                            pdf.cell(95, 5, f"Partenza: {partenza}", border=1)
+                            pdf.cell(95, 5, f"Destinazione: {destinazione}", border=1, ln=True)
+                            pdf.cell(190, 5, f"Tipologia Viaggio: {tipo_viaggio} ({km_totali} Km) - Veicolo: {classe_veicolo}", border=1, ln=True)
+
+                            pdf.ln(5)
+                            pdf.set_font("Helvetica", "B", 9)
+                            pdf.cell(130, 6, "Voce di Costo", border=1)
+                            pdf.cell(60, 6, "Importo (€)", border=1, ln=True, align="R")
+
+                            pdf.set_font("Helvetica", "", 9)
+                            pdf.cell(130, 6, f"Servizio Trasporto su Strada ({km_totali} Km x {tariffa_km:.2f} €/Km)", border=1)
+                            pdf.cell(60, 6, f"{costo_trasporto:.2f}", border=1, ln=True, align="R")
+
+                            pdf.cell(130, 6, f"Stima Pedaggio Autostradale ({classe_veicolo})", border=1)
+                            pdf.cell(60, 6, f"{pedaggio_stimato:.2f}", border=1, ln=True, align="R")
+
+                            if spese_extra > 0:
+                                pdf.cell(130, 6, "Spese Accessorie / Sosta", border=1)
+                                pdf.cell(60, 6, f"{spese_extra:.2f}", border=1, ln=True, align="R")
+
+                            pdf.set_font("Helvetica", "B", 10)
+                            pdf.cell(130, 7, "TOTALE IMPONIBILE", border=1)
+                            pdf.cell(60, 7, f"{totale_imponibile:.2f}", border=1, ln=True, align="R")
+                            pdf.cell(130, 7, "IVA 22%", border=1)
+                            pdf.cell(60, 7, f"{iva_22:.2f}", border=1, ln=True, align="R")
+                            pdf.cell(130, 8, "TOTALE GENERALE", border=1)
+                            pdf.cell(60, 8, f"{totale_generale:.2f} EUR", border=1, ln=True, align="R")
+
+                            pdf_out = pdf.output(dest="S")
+                            pdf_bytes = pdf_out.encode("latin-1", errors="replace") if isinstance(pdf_out, str) else bytes(pdf_out)
+
+                            st.download_button(
+                                "SCARICA PREVENTIVO PDF",
+                                data=pdf_bytes,
+                                file_name=f"Preventivo_{cliente_nome.replace(' ', '_')}.pdf",
+                                mime="application/pdf",
+                            )
+
+# ------------------------------------------
 # TAB 2: LETTERA DI VETTURA (BOLLA DDT)
-# ==========================================
+# ------------------------------------------
 with tab2:
     st.subheader("Generazione Lettera di Vettura / Bolla di Accompagnamento")
 
@@ -353,11 +393,10 @@ with tab2:
 
         pdf_b.ln(3)
 
-        # TABELLA UNIFICATA: REGISTRO ORARI E FIRME (COLONNA UNICA PER ORARI)
+        # TABELLA UNIFICATA: REGISTRO ORARI E FIRME (COLONNA UNICA "ORA ARRIVO / PARTENZA")
         pdf_b.set_font("Helvetica", "B", 8)
         pdf_b.set_fill_color(220, 220, 220)
         pdf_b.cell(85, 5, "Punto di Carico / Scarico", border=1, fill=True)
-        # COLONNA UNIFICATA RICHIESTA DA TUO PADRE
         pdf_b.cell(55, 5, "ORA ARRIVO / PARTENZA", border=1, align="C", fill=True)
         pdf_b.cell(54, 5, "SIGILLI / NOTE / FIRMA", border=1, align="C", fill=True, ln=True)
 
@@ -372,7 +411,7 @@ with tab2:
 
         for p in punti:
             pdf_b.cell(85, 8, p[:48], border=1)
-            pdf_b.cell(55, 8, "", border=1)  # Spazio unico per annotare sia Arrivo che Partenza
+            pdf_b.cell(55, 8, "", border=1)  # Spazio unico ampio per annotazioni
             pdf_b.cell(54, 8, "", border=1, ln=True)
 
         pdf_b.ln(3)
@@ -412,9 +451,9 @@ with tab2:
             mime="application/pdf",
         )
 
-# ==========================================
+# ------------------------------------------
 # TAB 3: CRONOLOGIA GENERALE
-# ==========================================
+# ------------------------------------------
 with tab3:
     st.subheader("📜 Storico Operazioni Registrate")
     cronologia = carica_cronologia()
