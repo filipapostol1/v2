@@ -59,7 +59,7 @@ st.markdown(
 # 2. BARRA LATERALE: DATI AZIENDA EMITTENTE
 # ==========================================
 st.sidebar.header("⚙️ Configurazione Azienda")
-st.sidebar.caption("Personalizza i dati dell'emittente del preventivo")
+st.sidebar.caption("Dati dell'emittente del preventivo")
 
 azienda_nome = st.sidebar.text_input(
     "Ragione Sociale",
@@ -121,31 +121,44 @@ st.markdown("---")
 col_left, col_right = st.columns([1, 1], gap="large")
 
 with col_left:
-    st.subheader("Dati Anagrafici e Tratta")
+    st.subheader("1. Dati Cliente (Intestatario)")
 
-    nome_mittente = st.text_input(
-        "Nome Cliente / Intestatario Preventivo",
+    cliente_nome = st.text_input(
+        "Ragione Sociale / Nome Cliente",
         value="ACME S.r.l.",
+        help="Nome della società a cui è intestato il preventivo",
     )
 
+    col_cli1, col_cli2 = st.columns(2)
+    with col_cli1:
+        cliente_indirizzo = st.text_input(
+            "Indirizzo Sede Cliente",
+            value="Via Industria 5, Bologna",
+        )
+    with col_cli2:
+        cliente_piva = st.text_input(
+            "P.IVA / C.F. Cliente",
+            value="IT98765432109",
+        )
+
+    st.subheader("2. Dati Tratta e Trasporto")
+
     partenza = st.text_input(
-        "Indirizzo / Città di Partenza",
+        "Indirizzo / Città di Partenza (Origine)",
         value="Via Roma 1, Milano",
     )
     destinazione = st.text_input(
-        "Indirizzo / Città di Arrivo",
+        "Indirizzo / Città di Arrivo (Destinazione)",
         value="Via Nazionale 10, Roma",
     )
 
-    # NUOVA OPZIONE: ANDATA E RITORNO
     tipo_viaggio = st.radio(
         "Tipologia Tratta",
         options=["Solo Andata", "Andata e Ritorno"],
         horizontal=True,
-        help="Selezionando 'Andata e Ritorno' la distanza e la tariffa verranno calcolate sul percorso di A/R.",
     )
 
-    st.subheader("Parametri Economici")
+    st.subheader("3. Parametri Economici")
 
     col_e1, col_e2 = st.columns(2)
     with col_e1:
@@ -169,8 +182,10 @@ with col_right:
     st.subheader("Riepilogo Elaborazione")
 
     if calcola_btn:
-        if not partenza or not destinazione:
-            st.error("Errore: inserire sia il punto di partenza sia la destinazione.")
+        if not partenza or not destinazione or not cliente_nome:
+            st.error(
+                "Errore: compilare la Ragione Sociale Cliente, la Partenza e la Destinazione."
+            )
         else:
             with st.spinner("Calcolo percorso e generazione preventivo..."):
                 lat1, lon1 = ottieni_coordinate(partenza)
@@ -180,7 +195,6 @@ with col_right:
                     km_singola_tratta = calcola_rotta(lat1, lon1, lat2, lon2)
 
                     if km_singola_tratta:
-                        # Raddoppio Km se Andata e Ritorno
                         moltiplicatore = (
                             2 if tipo_viaggio == "Andata e Ritorno" else 1
                         )
@@ -193,14 +207,15 @@ with col_right:
                         iva_22 = totale_imponibile * 0.22
                         totale_generale = totale_imponibile + iva_22
 
-                        # Salvataggio in Cronologia
+                        # Salvataggio in Cronologia con tutti i dati puliti
                         ora_attuale = datetime.now().strftime(
                             "%d/%m/%Y %H:%M"
                         )
                         salva_in_cronologia(
                             {
                                 "Data": ora_attuale,
-                                "Cliente": nome_mittente,
+                                "Cliente": cliente_nome,
+                                "P.IVA Cliente": cliente_piva,
                                 "Partenza": partenza,
                                 "Destinazione": destinazione,
                                 "Tipologia": tipo_viaggio,
@@ -266,33 +281,39 @@ with col_right:
                             fill=True,
                         )
 
-                        # Box
+                        # Box Dettagliati
                         y_boxes = pdf.get_y()
-                        box_h = 24
+                        box_h = 28
                         pdf.rect(10, y_boxes, 95, box_h)
                         pdf.rect(105, y_boxes, 95, box_h)
 
-                        # Cliente / Origine
+                        # --- CLIENTE / INTESTATARIO ---
                         pdf.set_xy(12, y_boxes + 2)
                         pdf.set_font("Helvetica", "", 7)
                         pdf.set_text_color(100, 100, 100)
-                        pdf.cell(91, 3, "INTESTATARIO / ORIGINE", ln=False)
+                        pdf.cell(91, 3, "CLIENTE / INTESTATARIO", ln=False)
 
                         pdf.set_xy(12, y_boxes + 6)
                         pdf.set_font("Helvetica", "B", 8)
                         pdf.set_text_color(0, 0, 0)
-                        valore_mittente = (
-                            nome_mittente.strip().upper()
-                            if nome_mittente
-                            else "CLIENTE B2B"
-                        )
-                        pdf.cell(91, 4, valore_mittente, ln=False)
+                        pdf.cell(91, 4, cliente_nome.upper(), ln=False)
 
                         pdf.set_xy(12, y_boxes + 11)
                         pdf.set_font("Helvetica", "", 8)
-                        pdf.multi_cell(91, 4, f"Partenza: {partenza.title()}")
+                        pdf.cell(91, 4, f"Sede: {cliente_indirizzo}", ln=False)
 
-                        # Destinazione
+                        pdf.set_xy(12, y_boxes + 16)
+                        pdf.cell(
+                            91, 4, f"P.IVA/C.F.: {cliente_piva}", ln=False
+                        )
+
+                        pdf.set_xy(12, y_boxes + 21)
+                        pdf.set_font("Helvetica", "I", 7)
+                        pdf.cell(
+                            91, 4, f"Partenza Merci: {partenza.title()}", ln=False
+                        )
+
+                        # --- DESTINAZIONE MERCI ---
                         pdf.set_xy(107, y_boxes + 2)
                         pdf.set_font("Helvetica", "", 7)
                         pdf.set_text_color(100, 100, 100)
@@ -476,7 +497,7 @@ with col_right:
                         )
                         pdf.cell(col_tbl[6], 5, "22%", align="C", ln=True)
 
-                        table_height = 140
+                        table_height = 135
                         pdf.rect(10, y_start_table, 190, table_height)
 
                         x_curr = 10
@@ -568,7 +589,7 @@ with col_right:
                         st.download_button(
                             label="SCARICA PREVENTIVO UFFICIALE (PDF)",
                             data=pdf_bytes,
-                            file_name=f"Preventivo_{partenza.split(',')[0]}_{destinazione.split(',')[0]}.pdf",
+                            file_name=f"Preventivo_{cliente_nome.replace(' ', '_')}.pdf",
                             mime="application/pdf",
                         )
                     else:
