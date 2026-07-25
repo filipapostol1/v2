@@ -195,11 +195,7 @@ with tab1:
         }
         stima_pedaggio_km = costi_pedaggio_km[classe_veicolo]
 
-        col_p1, col_p2 = st.columns(2)
-        with col_p1:
-            tariffa_km = st.number_input("Tariffa Trasporto (€/Km)", value=1.70, step=0.05)
-        with col_p2:
-            spese_extra = st.number_input("Spese Accessorie / Sosta (€)", value=30.0, step=10.0)
+        tariffa_km = st.number_input("Tariffa Trasporto (EUR/Km)", value=1.70, step=0.05)
 
         btn_calc = st.button("CALCOLA TRATTA E PEDAGGIO", type="primary")
 
@@ -231,19 +227,21 @@ with tab1:
                                 pedaggio_stimato = round(km_autostrada * stima_pedaggio_km, 2)
 
                                 costo_trasporto = round(km_totali * tariffa_km, 2)
-                                totale_imponibile = round(costo_trasporto + pedaggio_stimato + spese_extra, 2)
+                                
+                                # Totali calcolati senza le spese accessorie
+                                totale_imponibile = round(costo_trasporto + pedaggio_stimato, 2)
                                 iva_22 = round(totale_imponibile * 0.22, 2)
                                 totale_generale = round(totale_imponibile + iva_22, 2)
 
-                                # Salvataggio
+                                # Salvataggio in cronologia (con dicitura EUR per sicurezza encoding)
                                 salva_in_cronologia({
                                     "Data": datetime.now().strftime("%d/%m/%Y %H:%M"),
                                     "Tipo": "Preventivo",
                                     "Cliente": cliente_nome,
                                     "Tratta": f"{partenza} -> {destinazione} ({tipo_viaggio})",
                                     "Km": km_totali,
-                                    "Pedaggio Est.": f"€ {pedaggio_stimato:.2f}",
-                                    "Totale (€)": f"€ {totale_generale:.2f}",
+                                    "Pedaggio Est.": f"EUR {pedaggio_stimato:.2f}",
+                                    "Totale (EUR)": f"EUR {totale_generale:.2f}",
                                 })
 
                                 m1, m2 = st.columns(2)
@@ -296,18 +294,14 @@ with tab1:
                                 pdf.ln(5)
                                 pdf.set_font("Helvetica", "B", 9)
                                 pdf.cell(130, 6, "Voce di Costo", border=1)
-                                pdf.cell(60, 6, "Importo (€)", border=1, ln=True, align="R")
+                                pdf.cell(60, 6, "Importo (EUR)", border=1, ln=True, align="R")
 
                                 pdf.set_font("Helvetica", "", 9)
-                                pdf.cell(130, 6, f"Servizio Trasporto su Strada ({km_totali} Km x {tariffa_km:.2f} €/Km)", border=1)
+                                pdf.cell(130, 6, f"Servizio Trasporto su Strada ({km_totali} Km x {tariffa_km:.2f} EUR/Km)", border=1)
                                 pdf.cell(60, 6, f"{costo_trasporto:.2f}", border=1, ln=True, align="R")
 
                                 pdf.cell(130, 6, f"Stima Pedaggio Autostradale ({classe_veicolo})", border=1)
                                 pdf.cell(60, 6, f"{pedaggio_stimato:.2f}", border=1, ln=True, align="R")
-
-                                if spese_extra > 0:
-                                    pdf.cell(130, 6, "Spese Accessorie / Sosta", border=1)
-                                    pdf.cell(60, 6, f"{spese_extra:.2f}", border=1, ln=True, align="R")
 
                                 pdf.set_font("Helvetica", "B", 10)
                                 pdf.cell(130, 7, "TOTALE IMPONIBILE", border=1)
@@ -423,7 +417,7 @@ with tab2:
 
         pdf_b.ln(3)
 
-        # TABELLA UNIFICATA: REGISTRO ORARI E FIRME (COLONNA UNICA "ORA ARRIVO / PARTENZA")
+        # TABELLA UNIFICATA: REGISTRO ORARI E FIRME
         pdf_b.set_font("Helvetica", "B", 8)
         pdf_b.set_fill_color(220, 220, 220)
         pdf_b.cell(85, 5, "Punto di Carico / Scarico", border=1, fill=True)
@@ -441,7 +435,7 @@ with tab2:
 
         for p in punti:
             pdf_b.cell(85, 8, p[:48], border=1)
-            pdf_b.cell(55, 8, "", border=1)  # Spazio unico ampio per annotazioni
+            pdf_b.cell(55, 8, "", border=1)
             pdf_b.cell(54, 8, "", border=1, ln=True)
 
         pdf_b.ln(3)
