@@ -314,14 +314,14 @@ with tab_bolla:
         pdf.add_page()
         pdf.set_auto_page_break(False)
 
-        # Intestazione Personalizzata Vettore o Logo
+        # Intestazione Personalizzata Vettore o Logo (CORRETTO SENZA TAGLIO)
         if st.session_state.logo_bytes:
             img = Image.open(io.BytesIO(st.session_state.logo_bytes))
             img.save("temp_logo_bolla.png")
             pdf.image("temp_logo_bolla.png", x=10, y=10, w=35)
         else:
-            pdf.set_font("Helvetica", "B", 14)
-            pdf.text(10, 15, pulisci_testo(st.session_state.vettore_nome)[:20])
+            pdf.set_font("Helvetica", "B", 13)
+            pdf.text(10, 15, pulisci_testo(st.session_state.vettore_nome))
 
         pdf.set_font("Helvetica", "B", 10)
         pdf.text(150, 18, "LETTERA DI VETTURA")
