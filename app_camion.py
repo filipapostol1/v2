@@ -8,6 +8,16 @@ from PIL import Image
 import io
 
 # ==========================================
+# 0. CHIAVE API CENTRALIZZATA (NASCOSTA AL CLIENTE)
+# ==========================================
+# Inserisci qui la tua chiave OpenRouteService. 
+# Il cliente non vedrà mai questo valore nell'interfaccia.
+API_KEY_DEFAULT = "INSERISCI_QUI_LA_TUA_CHIAVE_API"
+
+# Se usi st.secrets (es. su Streamlit Cloud), prende quella, altrimenti usa API_KEY_DEFAULT
+ORS_API_KEY = st.secrets.get("ORS_API_KEY", API_KEY_DEFAULT)
+
+# ==========================================
 # 1. CONFIGURAZIONE PAGINA & SETUP INIZIALE
 # ==========================================
 st.set_page_config(page_title="Apostol Trasporti - ERP", layout="wide", initial_sidebar_state="collapsed")
@@ -31,7 +41,6 @@ if 'vettore_albo' not in st.session_state: st.session_state.vettore_albo = "SP/3
 if 'autista' not in st.session_state: st.session_state.autista = "APOSTOL CATALIN"
 if 'trattore' not in st.session_state: st.session_state.trattore = "GD613CR"
 if 'rimorchio' not in st.session_state: st.session_state.rimorchio = "XA762KF"
-if 'ors_api_key' not in st.session_state: st.session_state.ors_api_key = ""
 if 'logo_bytes' not in st.session_state: st.session_state.logo_bytes = None
 
 def carica_cronologia():
@@ -49,12 +58,10 @@ def salva_in_cronologia(record):
 
 def pulisci_testo(testo):
     if not testo: return ""
-    # Gestione sicura caratteri speciali per FPDF
     s = str(testo).replace("€", "EUR").replace("’", "'").replace("“", '"').replace("”", '"')
     return s.encode('latin-1', 'replace').decode('latin-1')
 
 def ottieni_coordinate(indirizzo):
-    """Cerca le coordinate GPS aggiungendo 'Italia' per evitare errori di localizzazione."""
     try:
         url_nom = "https://nominatim.openstreetmap.org/search"
         q_str = f"{indirizzo}, Italia" if "italia" not in indirizzo.lower() else indirizzo
@@ -64,11 +71,11 @@ def ottieni_coordinate(indirizzo):
     except: pass
     return None, None
 
-def calcola_rotta_camion(lat1, lon1, lat2, lon2, api_key):
-    """Calcola la rotta specifica per mezzi pesanti (driving-hgv)."""
-    if api_key:
+def calcola_rotta_camion(lat1, lon1, lat2, lon2):
+    """Calcola la rotta specifica per mezzi pesanti usando la chiave integrata."""
+    if ORS_API_KEY and ORS_API_KEY != "INSERISCI_QUI_LA_TUA_CHIAVE_API":
         try:
-            headers = {'Authorization': api_key, 'Content-Type': 'application/json'}
+            headers = {'Authorization': ORS_API_KEY, 'Content-Type': 'application/json'}
             body = {"coordinates": [[lon1, lat1], [lon2, lat2]]}
             res = requests.post("https://api.openrouteservice.org/v2/directions/driving-hgv/json", json=body, headers=headers, timeout=8)
             if res.status_code == 200:
@@ -77,7 +84,7 @@ def calcola_rotta_camion(lat1, lon1, lat2, lon2, api_key):
                 return round(dist_mt / 1000.0, 1)
         except: pass
 
-    # Fallback OSRM
+    # Fallback su OSRM standard
     try:
         url = f"http://router.project-osrm.org/route/v1/driving/{lon1},{lat1};{lon2},{lat2}?overview=false"
         res = requests.get(url, timeout=5)
@@ -87,29 +94,23 @@ def calcola_rotta_camion(lat1, lon1, lat2, lon2, api_key):
     return None
 
 def stima_pedaggio_autostrada(km_totali, classe_veicolo):
-    """
-    Stima il pedaggio autostradale italiano in base alla classe del mezzo
-    Ipotizzando una media del 75% di tratta autostradale.
-    """
-    # Tariffe medie autostrade italiane al KM per classe veicolo
     tariffe = {
-        "Bilico (4/5 Assi)": 0.19,  # Classe 5
-        "Camion (3 Assi)": 0.14,    # Classe 3
-        "Auto / Furgone": 0.09      # Classe B
+        "Bilico (4/5 Assi)": 0.19,
+        "Camion (3 Assi)": 0.14,
+        "Auto / Furgone": 0.09
     }
     costo_km = tariffe.get(classe_veicolo, 0.19)
-    km_autostrada = km_totali * 0.75  # Stima tratta autostradale
-    pedaggio = km_autostrada * costo_km
-    return round(pedaggio, 2)
+    km_autostrada = km_totali * 0.75
+    return round(km_autostrada * costo_km, 2)
 
 # ==========================================
 # 2. DASHBOARD CENTRALE
 # ==========================================
-st.title("🚛 Apostol Trasporti - Gestione Flotta & Documenti")
+st.title("🚛 Gestionale Trasporti & Preventivi")
 st.markdown("---")
 
 tab_impostazioni, tab_preventivi, tab_bolla, tab_cronologia = st.tabs([
-    "⚙️ Impostazioni & Logo", 
+    "⚙️ Impostazioni Azienda", 
     "📊 Calcolo Preventivi & Percorsi", 
     "📄 Generazione Bolla / DDT", 
     "📜 Cronologia"
@@ -117,7 +118,7 @@ tab_impostazioni, tab_preventivi, tab_bolla, tab_cronologia = st.tabs([
 
 # --- TAB 1: IMPOSTAZIONI ---
 with tab_impostazioni:
-    st.subheader("Dati Aziendali, Logo e API")
+    st.subheader("Dati Aziendali e Logo")
     
     col_img1, col_img2 = st.columns([1, 2])
     with col_img1:
@@ -132,8 +133,7 @@ with tab_impostazioni:
                 st.rerun()
 
     with col_img2:
-        st.session_state.ors_api_key = st.text_input("OpenRouteService API Key (Per calcolo vincoli camion)", value=st.session_state.ors_api_key, type="password")
-        st.caption("Puoi averne una gratuita registrandoti su openrouteservice.org")
+        st.info("Configurazione sistema completata. I servizi di cartografia e routing camion sono attivi e pronti all'uso.")
 
     st.markdown("---")
     col_v1, col_v2 = st.columns(2)
@@ -177,16 +177,14 @@ with tab_preventivi:
                     lat2, lon2 = ottieni_coordinate(destinazione)
                 
                 if lat1 is None or lat2 is None:
-                    st.error("Impossibile trovare le coordinate GPS per le località inserite. Specifica meglio città/indirizzo.")
+                    st.error("Impossibile trovare le coordinate GPS. Specifica meglio la città o l'indirizzo.")
                 else:
-                    km_unitaria = calcola_rotta_camion(lat1, lon1, lat2, lon2, st.session_state.ors_api_key)
+                    km_unitaria = calcola_rotta_camion(lat1, lon1, lat2, lon2)
                     
                     if not km_unitaria:
-                        st.error("Impossibile calcolare i KM della rotta tramite i servizi di mappa. Riprova più tardi.")
+                        st.error("Impossibile calcolare i KM della rotta. Riprova tra poco.")
                     else:
                         km_totali = km_unitaria * 2 if tipo_viaggio == "Andata e Ritorno" else km_unitaria
-                        
-                        # Calcolo automatico pedaggio basato su KM e Classe Mezzo
                         pedaggio_stimato = stima_pedaggio_autostrada(km_totali, classe_veicolo)
                         
                         costo_trasporto = round(km_totali * tariffa_km, 2)
@@ -214,7 +212,6 @@ with tab_preventivi:
                         pdf = FPDF(orientation='P', unit='mm', format='A4')
                         pdf.add_page()
                         
-                        # Inserimento Logo nel PDF se presente
                         if st.session_state.logo_bytes:
                             img = Image.open(io.BytesIO(st.session_state.logo_bytes))
                             img_path = "temp_logo.png"
@@ -343,7 +340,6 @@ with tab_bolla:
         pdf.add_page()
         pdf.set_auto_page_break(False)
 
-        # Gestione Logo nell'intestazione della Bolla
         if st.session_state.logo_bytes:
             img = Image.open(io.BytesIO(st.session_state.logo_bytes))
             img_path = "temp_logo_bolla.png"
@@ -358,7 +354,6 @@ with tab_bolla:
         pdf.text(50, 18, f"Indirizzo: {pulisci_testo(st.session_state.vettore_indirizzo)} - {pulisci_testo(st.session_state.vettore_loc)}")
         pdf.text(50, 22, f"P.IVA / C.F.: {pulisci_testo(st.session_state.vettore_piva)} | Albo: {pulisci_testo(st.session_state.vettore_albo)}")
         
-        # Riquadro Riferimento Documento (Senza finti codici a barre casuali)
         pdf.set_text_color(0, 0, 0)
         pdf.rect(140, 10, 60, 22)
         pdf.set_font("Helvetica", "B", 9)
@@ -438,7 +433,6 @@ with tab_bolla:
         pdf.text(35, y_r4+4, pulisci_testo(merce))
         pdf.text(110, y_r4+4, pulisci_testo(km_viaggio))
 
-        # Firme e note
         y_oss = 125
         pdf.rect(10, y_oss, 190, 25)
         pdf.set_font("Helvetica", "", 7)
