@@ -83,7 +83,6 @@ def calcola_rotta(lat1, lon1, lat2, lon2):
 st.title("🚛 Apostol Trasporti - Dashboard Gestionale")
 st.markdown("---")
 
-# Creazione delle schede (Tabs)
 tab_impostazioni, tab_preventivi, tab_bolla, tab_cronologia = st.tabs([
     "⚙️ Impostazioni Dati Base", 
     "📊 Calcolo Preventivi", 
@@ -111,166 +110,136 @@ with tab_impostazioni:
         st.session_state.trattore = st.text_input("Targa Trattore", value=st.session_state.trattore)
         st.session_state.rimorchio = st.text_input("Targa Rimorchio", value=st.session_state.rimorchio)
 
-# --- TAB 2: PREVENTIVI ---
+# --- TAB 2: PREVENTIVI (CONTROLLO TOTALE KM E PEDAGGI) ---
 with tab_preventivi:
-    st.subheader("Calcolo e Generazione Preventivo")
+    st.subheader("Calcolo e Generazione Preventivo di Precisione")
     col_p1, col_p2 = st.columns([1, 1], gap="large")
 
     with col_p1:
         cliente_nome = st.text_input("Nome Cliente / Committente", value="ACME S.r.l.")
         partenza = st.text_input("Luogo di Partenza", value="La Spezia")
         destinazione = st.text_input("Luogo di Destinazione", value="Parma")
-        tipo_viaggio = st.radio("Tipologia", options=["Solo Andata", "Andata e Ritorno"], horizontal=True)
+        tipo_viaggio = st.radio("Tipologia Viaggio", options=["Solo Andata", "Andata e Ritorno"], horizontal=True)
         
         st.markdown("---")
-        manual_km_check = st.checkbox("📍 Inserisci KM Manualmente (Salta mappa)")
-        km_manuali = st.number_input("Distanza Singola Tratta (Km)", min_value=1.0, value=100.0, step=1.0) if manual_km_check else 0.0
-
-        classe_veicolo = st.selectbox("Mezzo Utilizzato", options=["Auto / Furgone", "Camion (3 Assi)", "Bilico (4/5 Assi)"])
+        st.markdown("**🎯 Controllo Chilometrico e Pedaggio Reale**")
+        st.info("Puoi inserire direttamente i KM esatti e il pedaggio reale per evitare qualsiasi errore di mappa.")
         
-        # Tariffe pedaggio aggiornate e più realistiche
-        costi_pedaggio = {"Auto / Furgone": 0.10, "Camion (3 Assi)": 0.16, "Bilico (4/5 Assi)": 0.25}
-        stima_pedaggio_km = costi_pedaggio[classe_veicolo]
+        # Chilometri completamente controllabili
+        km_esatti = st.number_input("Chilometri Totali della Tratta (Modificabili liberamente)", min_value=1.0, value=200.0, step=1.0)
+        
+        classe_veicolo = st.selectbox("Mezzo Utilizzato", options=["Bilico (4/5 Assi)", "Camion (3 Assi)", "Auto / Furgone"])
         
         col_tar1, col_tar2 = st.columns(2)
         with col_tar1:
             tariffa_km = st.number_input("Tariffa (EUR al Km)", value=1.70, step=0.05)
         with col_tar2:
-            # Nuovo campo per forzare il pedaggio esatto!
-            pedaggio_manuale = st.number_input("Pedaggio Esatto (Lascia 0 per stima automatica)", value=0.0, step=5.0)
+            pedaggio_esatto = st.number_input("Pedaggio Reale Esatto (EUR)", value=0.0, step=1.0)
         
-        btn_calc = st.button("🧮 CALCOLA E GENERA PDF PREVENTIVO", type="primary", use_container_width=True)
+        btn_calc = st.button("🧮 GENERA PREVENTIVO ACCURATO (PDF)", type="primary", use_container_width=True)
 
     with col_p2:
         if btn_calc:
-            if not cliente_nome or (not manual_km_check and (not partenza or not destinazione)):
-                st.error("Inserisci Cliente, Partenza e Destinazione.")
+            if not cliente_nome:
+                st.error("Inserisci almeno il nome del cliente.")
             else:
-                with st.spinner("Calcolo rotta in corso..."):
-                    km_singoli = None
-                    if manual_km_check:
-                        km_singoli = km_manuali
-                    else:
-                        lat1, lon1 = ottieni_coordinate(partenza)
-                        if lat1: time.sleep(0.3)
-                        lat2, lon2 = ottieni_coordinate(destinazione)
-                        if lat1 and lat2: km_singoli = calcola_rotta(lat1, lon1, lat2, lon2)
+                km_totali = km_esatti
+                pedaggio_finale = round(pedaggio_esatto, 2)
+                costo_trasporto = round(km_totali * tariffa_km, 2)
+                imponibile = round(costo_trasporto + pedaggio_finale, 2)
+                iva = round(imponibile * 0.22, 2)
+                totale = round(imponibile + iva, 2)
 
-                    if not km_singoli and not manual_km_check:
-                        st.error("Calcolo mappa fallito. Spunta la casella per i Km manuali.")
-                    else:
-                        if not km_singoli: km_singoli = km_manuali
-                        moltiplicatore = 2 if tipo_viaggio == "Andata e Ritorno" else 1
-                        km_totali = round(km_singoli * moltiplicatore, 1)
-                        
-                        # LOGICA PEDAGGIO AGGIORNATA
-                        if pedaggio_manuale > 0:
-                            pedaggio_finale = round(pedaggio_manuale, 2)
-                        else:
-                            # Stima: calcoliamo che in media l'85% del tragitto sia autostradale
-                            pedaggio_finale = round(km_totali * 0.85 * stima_pedaggio_km, 2)
-                            
-                        costo_trasporto = round(km_totali * tariffa_km, 2)
-                        imponibile = round(costo_trasporto + pedaggio_finale, 2)
-                        iva = round(imponibile * 0.22, 2)
-                        totale = round(imponibile + iva, 2)
+                salva_in_cronologia({
+                    "Data": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                    "Tipo": "Preventivo",
+                    "Cliente": cliente_nome,
+                    "Tratta": f"{partenza} -> {destinazione}",
+                    "Totale": f"EUR {totale:.2f}"
+                })
 
-                        salva_in_cronologia({
-                            "Data": datetime.now().strftime("%d/%m/%Y %H:%M"),
-                            "Tipo": "Preventivo",
-                            "Cliente": cliente_nome,
-                            "Tratta": f"{partenza} -> {destinazione}",
-                            "Totale": f"EUR {totale:.2f}"
-                        })
+                st.success("Preventivo Calcolato con i tuoi dati esatti!")
+                st.metric("Distanza Totale Considerata (Km)", f"{km_totali}")
+                c_m1, c_m2 = st.columns(2)
+                c_m1.metric("Trasporto (EUR)", f"{costo_trasporto:.2f}")
+                c_m2.metric("Pedaggio Inserito (EUR)", f"{pedaggio_finale:.2f}")
+                st.metric("TOTALE FINALE (IVA Inc.)", f"EUR {totale:.2f}")
 
-                        st.success("Calcolo Completato!")
-                        st.metric("Distanza Totale (Km)", f"{km_totali}")
-                        c_m1, c_m2 = st.columns(2)
-                        c_m1.metric("Trasporto (EUR)", f"{costo_trasporto:.2f}")
-                        
-                        # Mostriamo se è stimato o esatto
-                        label_pedaggio = "Pedaggio Inserito Manualmente (EUR)" if pedaggio_manuale > 0 else "Pedaggio Stimato (EUR)"
-                        c_m2.metric(label_pedaggio, f"{pedaggio_finale:.2f}")
-                        
-                        st.metric("TOTALE FINALE (IVA Inc.)", f"EUR {totale:.2f}")
+                # PDF Preventivo
+                pdf = FPDF(orientation='P', unit='mm', format='A4')
+                pdf.add_page()
+                
+                pdf.set_font("Helvetica", "B", 14)
+                pdf.text(10, 20, pulisci_testo(st.session_state.vettore_nome))
+                pdf.set_font("Helvetica", "", 9)
+                pdf.text(10, 25, f"P.IVA: {pulisci_testo(st.session_state.vettore_piva)}")
+                pdf.text(10, 30, f"{pulisci_testo(st.session_state.vettore_indirizzo)} - {pulisci_testo(st.session_state.vettore_loc)}")
+                pdf.text(10, 35, f"Albo Trasportatori: {pulisci_testo(st.session_state.vettore_albo)}")
 
-                        # PDF Preventivo
-                        pdf = FPDF(orientation='P', unit='mm', format='A4')
-                        pdf.add_page()
-                        
-                        pdf.set_font("Helvetica", "B", 14)
-                        pdf.text(10, 20, pulisci_testo(st.session_state.vettore_nome))
-                        pdf.set_font("Helvetica", "", 9)
-                        pdf.text(10, 25, f"P.IVA: {pulisci_testo(st.session_state.vettore_piva)}")
-                        pdf.text(10, 30, f"{pulisci_testo(st.session_state.vettore_indirizzo)} - {pulisci_testo(st.session_state.vettore_loc)}")
-                        pdf.text(10, 35, f"Albo Trasportatori: {pulisci_testo(st.session_state.vettore_albo)}")
+                pdf.set_font("Helvetica", "B", 16)
+                pdf.text(110, 25, "PREVENTIVO DI TRASPORTO")
+                pdf.set_font("Helvetica", "", 10)
+                pdf.text(110, 32, f"Data emissione: {datetime.now().strftime('%d/%m/%Y')}")
 
-                        pdf.set_font("Helvetica", "B", 16)
-                        pdf.text(110, 25, "PREVENTIVO DI TRASPORTO")
-                        pdf.set_font("Helvetica", "", 10)
-                        pdf.text(110, 32, f"Data emissione: {datetime.now().strftime('%d/%m/%Y')}")
+                pdf.set_line_width(0.3)
+                pdf.rect(10, 45, 90, 30)
+                pdf.rect(110, 45, 90, 30)
 
-                        pdf.set_line_width(0.3)
-                        pdf.rect(10, 45, 90, 30)
-                        pdf.rect(110, 45, 90, 30)
+                pdf.set_font("Helvetica", "B", 8)
+                pdf.text(12, 50, "SPETT.LE COMMITTENTE:")
+                pdf.set_font("Helvetica", "", 10)
+                pdf.text(12, 57, pulisci_testo(cliente_nome))
+                
+                pdf.set_font("Helvetica", "B", 8)
+                pdf.text(112, 50, "DETTAGLI TRATTA E MEZZO:")
+                pdf.set_font("Helvetica", "", 9)
+                pdf.text(112, 57, f"Partenza: {pulisci_testo(partenza)}")
+                pdf.text(112, 63, f"Destinazione: {pulisci_testo(destinazione)}")
+                pdf.text(112, 69, f"Tipologia: {tipo_viaggio}  |  Mezzo: {classe_veicolo}")
 
-                        pdf.set_font("Helvetica", "B", 8)
-                        pdf.text(12, 50, "SPETT.LE COMMITTENTE:")
-                        pdf.set_font("Helvetica", "", 10)
-                        pdf.text(12, 57, pulisci_testo(cliente_nome))
-                        
-                        pdf.set_font("Helvetica", "B", 8)
-                        pdf.text(112, 50, "DETTAGLI TRATTA E MEZZO:")
-                        pdf.set_font("Helvetica", "", 9)
-                        pdf.text(112, 57, f"Partenza: {pulisci_testo(partenza)}")
-                        pdf.text(112, 63, f"Destinazione: {pulisci_testo(destinazione)}")
-                        pdf.text(112, 69, f"Tipologia: {tipo_viaggio}  |  Mezzo: {classe_veicolo}")
+                y_tab = 90
+                pdf.set_fill_color(220, 220, 220)
+                pdf.rect(10, y_tab, 190, 8, "DF")
+                
+                pdf.set_font("Helvetica", "B", 9)
+                pdf.text(12, y_tab + 5, "DESCRIZIONE DEL SERVIZIO")
+                pdf.text(165, y_tab + 5, "IMPORTO (EUR)")
 
-                        y_tab = 90
-                        pdf.set_fill_color(220, 220, 220)
-                        pdf.rect(10, y_tab, 190, 8, "DF")
-                        
-                        pdf.set_font("Helvetica", "B", 9)
-                        pdf.text(12, y_tab + 5, "DESCRIZIONE DEL SERVIZIO")
-                        pdf.text(165, y_tab + 5, "IMPORTO (EUR)")
+                pdf.set_font("Helvetica", "", 9)
+                pdf.line(10, y_tab+8, 10, y_tab+38) 
+                pdf.line(200, y_tab+8, 200, y_tab+38) 
+                pdf.line(160, y_tab+8, 160, y_tab+38) 
 
-                        pdf.set_font("Helvetica", "", 9)
-                        pdf.line(10, y_tab+8, 10, y_tab+38) 
-                        pdf.line(200, y_tab+8, 200, y_tab+38) 
-                        pdf.line(160, y_tab+8, 160, y_tab+38) 
+                pdf.text(12, y_tab + 16, f"Servizio di trasporto merce ({km_totali} Km x {tariffa_km:.2f} EUR/Km)")
+                pdf.text(170, y_tab + 16, f"{costo_trasporto:.2f}")
 
-                        pdf.text(12, y_tab + 16, f"Servizio di trasporto merce ({km_totali} Km x {tariffa_km:.2f} EUR/Km)")
-                        pdf.text(170, y_tab + 16, f"{costo_trasporto:.2f}")
+                pdf.text(12, y_tab + 24, "Rimborso spese pedaggio autostradale (Consuntivo)")
+                pdf.text(170, y_tab + 24, f"{pedaggio_finale:.2f}")
+                
+                pdf.line(10, y_tab+38, 200, y_tab+38)
 
-                        # Adatta il testo del PDF in base a se il pedaggio è stimato o esatto
-                        testo_riga_pedaggio = "Rimborso spese pedaggio autostradale (Stimato)" if pedaggio_manuale == 0 else "Rimborso spese pedaggio autostradale (Consuntivo)"
-                        pdf.text(12, y_tab + 24, testo_riga_pedaggio)
-                        pdf.text(170, y_tab + 24, f"{pedaggio_finale:.2f}")
-                        
-                        pdf.line(10, y_tab+38, 200, y_tab+38)
+                y_tot = y_tab + 45
+                pdf.rect(120, y_tot, 80, 25)
+                pdf.line(120, y_tot+8, 200, y_tot+8)
+                pdf.line(120, y_tot+16, 200, y_tot+16)
+                pdf.line(160, y_tot, 160, y_tot+25)
 
-                        y_tot = y_tab + 45
-                        pdf.rect(120, y_tot, 80, 25)
-                        pdf.line(120, y_tot+8, 200, y_tot+8)
-                        pdf.line(120, y_tot+16, 200, y_tot+16)
-                        pdf.line(160, y_tot, 160, y_tot+25)
+                pdf.set_font("Helvetica", "B", 9)
+                pdf.text(122, y_tot + 6, "IMPONIBILE")
+                pdf.text(165, y_tot + 6, f"{imponibile:.2f}")
+                
+                pdf.text(122, y_tot + 14, "IVA (22%)")
+                pdf.text(165, y_tot + 14, f"{iva:.2f}")
 
-                        pdf.set_font("Helvetica", "B", 9)
-                        pdf.text(122, y_tot + 6, "IMPONIBILE")
-                        pdf.text(165, y_tot + 6, f"{imponibile:.2f}")
-                        
-                        pdf.text(122, y_tot + 14, "IVA (22%)")
-                        pdf.text(165, y_tot + 14, f"{iva:.2f}")
+                pdf.set_font("Helvetica", "B", 10)
+                pdf.text(122, y_tot + 22, "TOTALE")
+                pdf.text(165, y_tot + 22, f"{totale:.2f}")
 
-                        pdf.set_font("Helvetica", "B", 10)
-                        pdf.text(122, y_tot + 22, "TOTALE")
-                        pdf.text(165, y_tot + 22, f"{totale:.2f}")
-
-                        pdf.set_font("Helvetica", "I", 8)
-                        pdf.text(10, y_tot + 40, "Il presente preventivo ha validita' di 15 giorni dalla data di emissione.")
-                        
-                        pdf_bytes = pdf.output(dest='S').encode('latin-1', 'replace')
-                        st.download_button("📥 SCARICA PREVENTIVO (PDF)", data=pdf_bytes, file_name=f"Preventivo_{pulisci_testo(cliente_nome)}.pdf", mime="application/pdf")
+                pdf.set_font("Helvetica", "I", 8)
+                pdf.text(10, y_tot + 40, "Il presente preventivo ha validita' di 15 giorni dalla data di emissione.")
+                
+                pdf_bytes = pdf.output(dest='S').encode('latin-1', 'replace')
+                st.download_button("📥 SCARICA PREVENTIVO (PDF)", data=pdf_bytes, file_name=f"Preventivo_{pulisci_testo(cliente_nome)}.pdf", mime="application/pdf")
 
 # --- TAB 3: BOLLA CLONE ---
 with tab_bolla:
