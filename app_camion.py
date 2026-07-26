@@ -23,7 +23,7 @@ st.markdown("""
 
 FILE_CRONOLOGIA = "cronologia.json"
 
-# Inizializzazione variabili globali in session_state (per mantenerle tra i tab)
+# Inizializzazione variabili globali in session_state
 if 'vettore_nome' not in st.session_state: st.session_state.vettore_nome = "APOSTOL TRASPORTI DI APOSTOL C"
 if 'vettore_piva' not in st.session_state: st.session_state.vettore_piva = "01595470111"
 if 'vettore_indirizzo' not in st.session_state: st.session_state.vettore_indirizzo = "VIA EMILIO BIONE 8"
@@ -87,7 +87,7 @@ st.markdown("---")
 tab_impostazioni, tab_preventivi, tab_bolla, tab_cronologia = st.tabs([
     "⚙️ Impostazioni Dati Base", 
     "📊 Calcolo Preventivi", 
-    "📄 Generazione Bolla (Clone SILT)", 
+    "📄 Generazione Bolla", 
     "📜 Cronologia"
 ])
 
@@ -126,12 +126,18 @@ with tab_preventivi:
         manual_km_check = st.checkbox("📍 Inserisci KM Manualmente (Salta mappa)")
         km_manuali = st.number_input("Distanza Singola Tratta (Km)", min_value=1.0, value=100.0, step=1.0) if manual_km_check else 0.0
 
-        # Nomi semplici per i veicoli come richiesto
         classe_veicolo = st.selectbox("Mezzo Utilizzato", options=["Auto / Furgone", "Camion (3 Assi)", "Bilico (4/5 Assi)"])
-        costi_pedaggio = {"Auto / Furgone": 0.09, "Camion (3 Assi)": 0.14, "Bilico (4/5 Assi)": 0.21}
+        
+        # Tariffe pedaggio aggiornate e più realistiche
+        costi_pedaggio = {"Auto / Furgone": 0.10, "Camion (3 Assi)": 0.16, "Bilico (4/5 Assi)": 0.25}
         stima_pedaggio_km = costi_pedaggio[classe_veicolo]
         
-        tariffa_km = st.number_input("Tariffa (EUR al Km)", value=1.70, step=0.05)
+        col_tar1, col_tar2 = st.columns(2)
+        with col_tar1:
+            tariffa_km = st.number_input("Tariffa (EUR al Km)", value=1.70, step=0.05)
+        with col_tar2:
+            # Nuovo campo per forzare il pedaggio esatto!
+            pedaggio_manuale = st.number_input("Pedaggio Esatto (Lascia 0 per stima automatica)", value=0.0, step=5.0)
         
         btn_calc = st.button("🧮 CALCOLA E GENERA PDF PREVENTIVO", type="primary", use_container_width=True)
 
@@ -157,10 +163,15 @@ with tab_preventivi:
                         moltiplicatore = 2 if tipo_viaggio == "Andata e Ritorno" else 1
                         km_totali = round(km_singoli * moltiplicatore, 1)
                         
-                        # Calcoli finanziari
-                        pedaggio_stimato = round(km_totali * 0.85 * stima_pedaggio_km, 2) # Assume 85% autostrada
+                        # LOGICA PEDAGGIO AGGIORNATA
+                        if pedaggio_manuale > 0:
+                            pedaggio_finale = round(pedaggio_manuale, 2)
+                        else:
+                            # Stima: calcoliamo che in media l'85% del tragitto sia autostradale
+                            pedaggio_finale = round(km_totali * 0.85 * stima_pedaggio_km, 2)
+                            
                         costo_trasporto = round(km_totali * tariffa_km, 2)
-                        imponibile = round(costo_trasporto + pedaggio_stimato, 2)
+                        imponibile = round(costo_trasporto + pedaggio_finale, 2)
                         iva = round(imponibile * 0.22, 2)
                         totale = round(imponibile + iva, 2)
 
@@ -176,14 +187,17 @@ with tab_preventivi:
                         st.metric("Distanza Totale (Km)", f"{km_totali}")
                         c_m1, c_m2 = st.columns(2)
                         c_m1.metric("Trasporto (EUR)", f"{costo_trasporto:.2f}")
-                        c_m2.metric("Pedaggio Stimato (EUR)", f"{pedaggio_stimato:.2f}")
+                        
+                        # Mostriamo se è stimato o esatto
+                        label_pedaggio = "Pedaggio Inserito Manualmente (EUR)" if pedaggio_manuale > 0 else "Pedaggio Stimato (EUR)"
+                        c_m2.metric(label_pedaggio, f"{pedaggio_finale:.2f}")
+                        
                         st.metric("TOTALE FINALE (IVA Inc.)", f"EUR {totale:.2f}")
 
-                        # --- PDF PREVENTIVO (Layout Professionale a Griglia) ---
+                        # PDF Preventivo
                         pdf = FPDF(orientation='P', unit='mm', format='A4')
                         pdf.add_page()
                         
-                        # Intestazione
                         pdf.set_font("Helvetica", "B", 14)
                         pdf.text(10, 20, pulisci_testo(st.session_state.vettore_nome))
                         pdf.set_font("Helvetica", "", 9)
@@ -196,7 +210,6 @@ with tab_preventivi:
                         pdf.set_font("Helvetica", "", 10)
                         pdf.text(110, 32, f"Data emissione: {datetime.now().strftime('%d/%m/%Y')}")
 
-                        # Box Cliente e Tratta
                         pdf.set_line_width(0.3)
                         pdf.rect(10, 45, 90, 30)
                         pdf.rect(110, 45, 90, 30)
@@ -213,7 +226,6 @@ with tab_preventivi:
                         pdf.text(112, 63, f"Destinazione: {pulisci_testo(destinazione)}")
                         pdf.text(112, 69, f"Tipologia: {tipo_viaggio}  |  Mezzo: {classe_veicolo}")
 
-                        # Tabella Costi
                         y_tab = 90
                         pdf.set_fill_color(220, 220, 220)
                         pdf.rect(10, y_tab, 190, 8, "DF")
@@ -223,19 +235,20 @@ with tab_preventivi:
                         pdf.text(165, y_tab + 5, "IMPORTO (EUR)")
 
                         pdf.set_font("Helvetica", "", 9)
-                        pdf.line(10, y_tab+8, 10, y_tab+38) # Bordo SX
-                        pdf.line(200, y_tab+8, 200, y_tab+38) # Bordo DX
-                        pdf.line(160, y_tab+8, 160, y_tab+38) # Divisore verticale
+                        pdf.line(10, y_tab+8, 10, y_tab+38) 
+                        pdf.line(200, y_tab+8, 200, y_tab+38) 
+                        pdf.line(160, y_tab+8, 160, y_tab+38) 
 
                         pdf.text(12, y_tab + 16, f"Servizio di trasporto merce ({km_totali} Km x {tariffa_km:.2f} EUR/Km)")
                         pdf.text(170, y_tab + 16, f"{costo_trasporto:.2f}")
 
-                        pdf.text(12, y_tab + 24, "Rimborso spese pedaggio autostradale stimato")
-                        pdf.text(170, y_tab + 24, f"{pedaggio_stimato:.2f}")
+                        # Adatta il testo del PDF in base a se il pedaggio è stimato o esatto
+                        testo_riga_pedaggio = "Rimborso spese pedaggio autostradale (Stimato)" if pedaggio_manuale == 0 else "Rimborso spese pedaggio autostradale (Consuntivo)"
+                        pdf.text(12, y_tab + 24, testo_riga_pedaggio)
+                        pdf.text(170, y_tab + 24, f"{pedaggio_finale:.2f}")
                         
-                        pdf.line(10, y_tab+38, 200, y_tab+38) # Bordo fondo
+                        pdf.line(10, y_tab+38, 200, y_tab+38)
 
-                        # Totali
                         y_tot = y_tab + 45
                         pdf.rect(120, y_tot, 80, 25)
                         pdf.line(120, y_tot+8, 200, y_tot+8)
@@ -259,9 +272,9 @@ with tab_preventivi:
                         pdf_bytes = pdf.output(dest='S').encode('latin-1', 'replace')
                         st.download_button("📥 SCARICA PREVENTIVO (PDF)", data=pdf_bytes, file_name=f"Preventivo_{pulisci_testo(cliente_nome)}.pdf", mime="application/pdf")
 
-# --- TAB 3: BOLLA CLONE SILT ---
+# --- TAB 3: BOLLA CLONE ---
 with tab_bolla:
-    st.subheader("Generazione Lettera di Vettura (Modello SILT/Finsea Esatto)")
+    st.subheader("Generazione Lettera di Vettura (Modello Esatto)")
     
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -300,7 +313,7 @@ with tab_bolla:
         caric2_nome = st.text_input("2° Caricatore (Opzionale)", value="")
         caric2_ind = st.text_input("Indirizzo 2° Caric.", value="")
 
-    if st.button("🖨️ GENERA BOLLA IDENTICA ALL'ORIGINALE", type="primary", use_container_width=True):
+    if st.button("🖨️ GENERA BOLLA (MODELLO CLONATO)", type="primary", use_container_width=True):
         salva_in_cronologia({
             "Data": datetime.now().strftime("%d/%m/%Y %H:%M"),
             "Tipo": "Emissione Bolla",
@@ -314,22 +327,23 @@ with tab_bolla:
         pdf.add_page()
         pdf.set_auto_page_break(False)
 
-        # 1. INTESTAZIONE
+        # 1. INTESTAZIONE DINAMICA
+        nome_logo = pulisci_testo(st.session_state.vettore_nome).split()[0].lower() if st.session_state.vettore_nome else "logo"
+        
         pdf.set_font("Helvetica", "B", 18)
         pdf.set_text_color(100, 100, 100)
-        pdf.text(10, 20, "silt")
+        pdf.text(10, 20, nome_logo)
         pdf.set_font("Helvetica", "", 7)
         pdf.set_text_color(150, 150, 150)
-        pdf.text(10, 24, "FINSEA TRANSPORT")
+        pdf.text(10, 24, "TRANSPORT")
 
         pdf.set_text_color(0, 0, 200)
         pdf.set_font("Helvetica", "B", 8)
-        pdf.text(45, 12, "S.I.L.T. S.r.l. Sistemi Integrati di Logistica e Trasporto")
-        pdf.set_font("Helvetica", "", 5)
-        pdf.text(45, 15, "Sede Legale 20129 Milano (MI) - Corso Concordia, 11")
-        pdf.text(45, 18, "Direzione e Amministrazione: 16128 GENOVA - Piazza G. Alessi, 2 - Tel 010 5761098")
-        pdf.text(45, 21, "Capitale Sociale EUR 96.900,00 - C.F & P.IVA 03441250101")
-        pdf.text(45, 24, "Uffici Operativi: 16158 GENOVA VOLTRI (GE)")
+        pdf.text(45, 12, pulisci_testo(st.session_state.vettore_nome))
+        pdf.set_font("Helvetica", "", 6)
+        pdf.text(45, 16, f"Indirizzo: {pulisci_testo(st.session_state.vettore_indirizzo)} - {pulisci_testo(st.session_state.vettore_loc)}")
+        pdf.text(45, 20, f"P.IVA / C.F.: {pulisci_testo(st.session_state.vettore_piva)}")
+        pdf.text(45, 24, f"Iscrizione Albo: {pulisci_testo(st.session_state.vettore_albo)}")
         pdf.set_text_color(0, 0, 0)
 
         draw_fake_barcode(pdf, 120, 12, 70, 12, booking_ref)
@@ -392,7 +406,8 @@ with tab_bolla:
         pdf.text(107, y_r2+33, "Veicolo")
 
         pdf.set_font("Helvetica", "B", 8)
-        pdf.text(125, y_r2+4, pulisci_testo(st.session_state.vettore_nome))
+        nome_vett_troncato = pulisci_testo(st.session_state.vettore_nome)[:28]
+        pdf.text(125, y_r2+4, nome_vett_troncato)
         pdf.text(175, y_r2+4, pulisci_testo(st.session_state.vettore_piva))
         pdf.text(125, y_r2+9, f"{pulisci_testo(st.session_state.vettore_indirizzo)} - {pulisci_testo(st.session_state.vettore_loc)}")
         pdf.text(165, y_r2+14, pulisci_testo(st.session_state.vettore_albo))
@@ -436,9 +451,9 @@ with tab_bolla:
         pdf.set_font("Helvetica", "B", 9)
         pdf.text(130, y_r3+20, pulisci_testo(destinazione_merce))
 
-        # 5. BLOCCO MERCE E KM
+        # 5. BLOCCO MERCE E KM 
         y_r4 = 110
-        pdf.rect(10, y_r4, 190, 10)
+        pdf.rect(10, y_r4, 190, 15)
         pdf.set_font("Helvetica", "", 7)
         pdf.text(12, y_r4+4, "Merce")
         pdf.text(12, y_r4+8, "Rif. Al carico")
@@ -449,8 +464,8 @@ with tab_bolla:
         pdf.text(25, y_r4+4, pulisci_testo(merce))
         pdf.text(25, y_r4+13, pulisci_testo(km_viaggio))
 
-        # 6. GRIGLIA CARICATORI
-        y_caric = 120
+        # 6. GRIGLIA CARICATORI 
+        y_caric = 125
         caricatori = [caric1_nome, caric2_nome, ""]
         indirizzi = [caric1_ind, caric2_ind, ""]
         
@@ -478,19 +493,19 @@ with tab_bolla:
             pdf.text(32, y_base+8, pulisci_testo(indirizzi[i]))
 
         # 7. OSSERVAZIONI E FIRME
-        y_oss = 168
+        y_oss = 173
         pdf.rect(10, y_oss, 190, 20)
         pdf.set_font("Helvetica", "", 7)
         pdf.text(12, y_oss+4, "Osservazioni")
         
-        y_firm = 188
+        y_firm = 193
         pdf.rect(10, y_firm, 190, 12)
         pdf.text(12, y_firm+4, "DICHIARAZIONE RICEVITORE/DESTINATARIO")
         pdf.text(100, y_firm+4, "Constatato integro il sigillo ___________________ apposto mittente")
         pdf.text(100, y_firm+10, "Rimosso sigillo mittente e apposto sigillo ___________________")
 
         # 8. CONDIZIONI 
-        y_cond = 205
+        y_cond = 210
         pdf.set_xy(10, y_cond)
         pdf.set_font("Helvetica", "B", 7)
         pdf.cell(190, 4, "CONDIZIONI PARTICOLARI DI TRASPORTO", ln=True)
@@ -508,7 +523,7 @@ with tab_bolla:
         pdf.multi_cell(190, 2.8, testo_condizioni)
 
         pdf_bytes = pdf.output(dest='S').encode('latin-1', 'replace')
-        st.download_button("📥 SCARICA LETTERA DI VETTURA (CLONE SILT)", data=pdf_bytes, file_name=f"Bolla_{pulisci_testo(booking_ref)}.pdf", mime="application/pdf")
+        st.download_button("📥 SCARICA LETTERA DI VETTURA", data=pdf_bytes, file_name=f"Bolla_{pulisci_testo(booking_ref)}.pdf", mime="application/pdf")
 
 # --- TAB 4: CRONOLOGIA ---
 with tab_cronologia:
